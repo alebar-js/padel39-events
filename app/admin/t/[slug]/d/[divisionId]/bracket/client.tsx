@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Fragment, useState, useEffect, useCallback } from "react";
 import { recordScore } from "@/app/lib/actions/recordScore";
 import type { MatchRow, TeamMap, MatchFormat, SetScore } from "./page";
 
@@ -99,54 +99,77 @@ function MatchCard({
   const maxSets = matchFormat === "ONE_SET" ? 1 : 3;
 
   return (
-    <div
-      onClick={() => !isEmpty && onClick(match)}
-      style={{
-        position: "absolute",
-        top,
-        left: 0,
-        width: CARD_W,
-        height: CARD_H,
-        border: `1.5px solid ${isEmpty ? "var(--line-soft)" : "var(--paper-2)"}`,
-        borderRadius: 8,
-        background: "var(--paper)",
-        cursor: isEmpty ? "default" : "pointer",
-        overflow: "hidden",
-        boxShadow: isEmpty ? "none" : "0 1px 3px rgba(0,0,0,.06)",
-        opacity: isEmpty ? 0.45 : 1,
-        transition: "box-shadow .15s",
-      }}
-    >
-      {[
-        { name: t1, id: match.team1Id, team: 1 as const },
-        { name: t2, id: match.team2Id, team: 2 as const },
-      ].map(({ name, id, team }, idx) => (
+    <div style={{ position: "absolute", top, left: 0, width: CARD_W }}>
+      <div
+        onClick={() => !isEmpty && onClick(match)}
+        style={{
+          width: CARD_W,
+          height: CARD_H,
+          border: `1.5px solid ${isEmpty ? "var(--line-soft)" : "var(--paper-2)"}`,
+          borderRadius: 8,
+          background: "var(--paper)",
+          cursor: isEmpty ? "default" : "pointer",
+          overflow: "hidden",
+          boxShadow: isEmpty ? "none" : "0 1px 3px rgba(0,0,0,.06)",
+          opacity: isEmpty ? 0.45 : 1,
+          transition: "box-shadow .15s",
+        }}
+      >
+        {[
+          { name: t1, id: match.team1Id, team: 1 as const },
+          { name: t2, id: match.team2Id, team: 2 as const },
+        ].map(({ name, id, team }, idx) => (
+          <div
+            key={idx}
+            style={{
+              height: "50%",
+              display: "flex",
+              alignItems: "center",
+              padding: "0 10px",
+              borderBottom: idx === 0 ? "1px solid var(--paper-2)" : undefined,
+              background: w && w === id ? "rgba(31,77,58,.08)" : undefined,
+              fontSize: 13,
+              fontWeight: w && w === id ? 600 : 400,
+              color: name ? "var(--ink)" : "var(--ink-muted)",
+              gap: 6,
+            }}
+          >
+            {w && w === id && (
+              <span style={{ color: "var(--green)", fontSize: 11 }}>✓</span>
+            )}
+            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {name ?? (isTbd ? "TBD" : "")}
+            </span>
+            {!isEmpty && <SetBoxes sets={match.sets} team={team} maxSets={maxSets} />}
+          </div>
+        ))}
+      </div>
+      {!isEmpty && match.scheduledTime && (
         <div
-          key={idx}
-          style={{
-            height: "50%",
-            display: "flex",
-            alignItems: "center",
-            padding: "0 10px",
-            borderBottom: idx === 0 ? "1px solid var(--paper-2)" : undefined,
-            background: w && w === id ? "rgba(31,77,58,.08)" : undefined,
-            fontSize: 13,
-            fontWeight: w && w === id ? 600 : 400,
-            color: name ? "var(--ink)" : "var(--ink-muted)",
-            gap: 6,
-          }}
+          className="muted"
+          style={{ fontSize: 11, marginTop: 4, padding: "0 10px" }}
         >
-          {w && w === id && (
-            <span style={{ color: "var(--green)", fontSize: 11 }}>✓</span>
-          )}
-          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {name ?? (isTbd ? "TBD" : "")}
-          </span>
-          {!isEmpty && <SetBoxes sets={match.sets} team={team} maxSets={maxSets} />}
+          {formatScheduledTime(match.scheduledTime)}
         </div>
-      ))}
+      )}
     </div>
   );
+}
+
+function formatScheduledTime(iso: string): string {
+  const d = new Date(iso);
+  const dateStr = d.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  const ampm = h < 12 ? "am" : "pm";
+  const h12 = h % 12 || 12;
+  const timeStr = m === 0 ? `${h12}:00 ${ampm}` : `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+  return `${dateStr} - ${timeStr}`;
 }
 
 // ─── Side drawer ──────────────────────────────────────────────────────────────
@@ -415,10 +438,13 @@ export function BracketView({
 
   const size = bracketSize(matches);
   const rounds = groupByRound(matches, size);
-  const r1 = rounds[0] ?? [];
 
   const yBySlot = new Map<number, number>();
-  r1.forEach((m, i) => yBySlot.set(m.bracketSlot, i * (CARD_H + CARD_GAP)));
+  // Give every R1 slot a virtual y-position, whether or not a live match exists there
+  // (byes leave some slots empty but the parent's midpoint still needs those coordinates).
+  for (let i = 0; i < size; i++) {
+    yBySlot.set(size + i, i * (CARD_H + CARD_GAP));
+  }
   for (let ri = 1; ri < rounds.length; ri++) {
     for (const m of rounds[ri]) {
       const c1 = yBySlot.get(m.bracketSlot * 2);
@@ -429,37 +455,125 @@ export function BracketView({
     }
   }
 
-  const totalH = r1.length * (CARD_H + CARD_GAP) - CARD_GAP;
+  const totalH = size * (CARD_H + CARD_GAP) - CARD_GAP;
+  const CONNECTOR_W = 40;
+  const liveSlots = new Set(matches.map((m) => m.bracketSlot));
 
   // Keep selected in sync with latest data from props (after server action revalidates)
   const currentSelected = selected ? matches.find((m) => m.id === selected.id) ?? null : null;
 
+  // Label height + gap above each round column — connectors need to line up with cards,
+  // so we offset the SVG by this header height too.
+  const HEADER_H = 11 + 4 + 8; // label fontSize + marginBottom + flex gap (see column below)
+
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
-      <div style={{ display: "flex", gap: 56, alignItems: "flex-start", minWidth: "max-content" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", minWidth: "max-content" }}>
         {rounds.map((roundMatches, ri) => {
           const label = ROUND_LABELS[roundMatches[0]?.round] ?? roundMatches[0]?.round;
+          const nextRound = rounds[ri + 1];
           return (
-            <div key={ri} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div
-                className="muted"
-                style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}
-              >
-                {label}
+            <Fragment key={ri}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div
+                  className="muted"
+                  style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}
+                >
+                  {label}
+                </div>
+                <div style={{ position: "relative", width: CARD_W, height: totalH }}>
+                  {roundMatches.map((m) => (
+                    <MatchCard
+                      key={m.id}
+                      match={m}
+                      teamMap={teamMap}
+                      top={yBySlot.get(m.bracketSlot) ?? 0}
+                      matchFormat={matchFormat}
+                      onClick={setSelected}
+                    />
+                  ))}
+                </div>
               </div>
-              <div style={{ position: "relative", width: CARD_W, height: totalH }}>
-                {roundMatches.map((m) => (
-                  <MatchCard
-                    key={m.id}
-                    match={m}
-                    teamMap={teamMap}
-                    top={yBySlot.get(m.bracketSlot) ?? 0}
-                    matchFormat={matchFormat}
-                    onClick={setSelected}
-                  />
-                ))}
-              </div>
-            </div>
+
+              {nextRound && (
+                <div style={{ width: CONNECTOR_W, paddingTop: HEADER_H, flexShrink: 0 }}>
+                  <svg
+                    width={CONNECTOR_W}
+                    height={totalH}
+                    style={{ display: "block", overflow: "visible" }}
+                  >
+                    {nextRound.map((parent) => {
+                      const c1Slot = parent.bracketSlot * 2;
+                      const c2Slot = parent.bracketSlot * 2 + 1;
+                      const pY = yBySlot.get(parent.bracketSlot);
+                      if (pY === undefined) return null;
+                      const parentMid = pY + CARD_H / 2;
+                      const midX = CONNECTOR_W / 2;
+                      const segs: React.ReactNode[] = [];
+
+                      // Only draw stubs for children that have a live match (skip byes).
+                      const liveChildMids: number[] = [];
+                      for (const cSlot of [c1Slot, c2Slot]) {
+                        if (!liveSlots.has(cSlot)) continue;
+                        const cY = yBySlot.get(cSlot);
+                        if (cY === undefined) continue;
+                        const childMid = cY + CARD_H / 2;
+                        liveChildMids.push(childMid);
+                        segs.push(
+                          <line
+                            key={`h-${parent.id}-${cSlot}`}
+                            x1={0}
+                            y1={childMid}
+                            x2={midX}
+                            y2={childMid}
+                            stroke="var(--line-soft)"
+                            strokeWidth={1.5}
+                          />
+                        );
+                      }
+
+                      if (liveChildMids.length > 0) {
+                        // Vertical join at midX spanning from the topmost point to the bottommost
+                        // point among the live children and the parent's mid. With two live children
+                        // this connects them; with one live child + bye, it still bridges up/down to
+                        // the parent's y-level.
+                        const points = [...liveChildMids, parentMid];
+                        const yTop = Math.min(...points);
+                        const yBot = Math.max(...points);
+                        if (yTop !== yBot) {
+                          segs.push(
+                            <line
+                              key={`v-${parent.id}`}
+                              x1={midX}
+                              y1={yTop}
+                              x2={midX}
+                              y2={yBot}
+                              stroke="var(--line-soft)"
+                              strokeWidth={1.5}
+                            />
+                          );
+                        }
+
+                        // Horizontal from midX to the parent's left edge at parent's vertical mid.
+                        segs.push(
+                          <line
+                            key={`p-${parent.id}`}
+                            x1={midX}
+                            y1={parentMid}
+                            x2={CONNECTOR_W}
+                            y2={parentMid}
+                            stroke="var(--line-soft)"
+                            strokeWidth={1.5}
+                          />
+                        );
+                      }
+
+                      return <g key={parent.id}>{segs}</g>;
+                    })}
+                  </svg>
+                </div>
+              )}
+            </Fragment>
           );
         })}
       </div>

@@ -517,6 +517,26 @@ function AssignDrawer({
             </>
           )}
 
+          {previewErrors.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {previewErrors.map((e, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: 12,
+                    color: "var(--accent-orange)",
+                    padding: "8px 12px",
+                    background: "rgba(var(--accent-orange-rgb, 220,100,40),.08)",
+                    borderRadius: 6,
+                    border: "1px solid rgba(var(--accent-orange-rgb, 220,100,40),.25)",
+                  }}
+                >
+                  {e}
+                </div>
+              ))}
+            </div>
+          )}
+
           {error && (
             <div style={{ fontSize: 13, color: "var(--accent-orange)" }}>{error}</div>
           )}
@@ -546,19 +566,20 @@ function AssignDrawer({
             </button>
             <button
               onClick={handleAssign}
-              disabled={saving || !selectedMatchId}
+              disabled={saving || !selectedMatchId || previewing || previewErrors.length > 0}
               style={{
                 padding: "8px 20px", fontSize: 13,
                 fontFamily: "Poppins, sans-serif",
-                background: selectedMatchId ? "var(--green)" : "var(--paper-2)",
+                background: selectedMatchId && previewErrors.length === 0 ? "var(--green)" : "var(--paper-2)",
                 border: "none",
-                borderRadius: 6, cursor: selectedMatchId ? "pointer" : "default",
-                color: selectedMatchId ? "#fff" : "var(--ink-muted)",
+                borderRadius: 6,
+                cursor: selectedMatchId && previewErrors.length === 0 ? "pointer" : "default",
+                color: selectedMatchId && previewErrors.length === 0 ? "#fff" : "var(--ink-muted)",
                 fontWeight: 600,
                 transition: "background 120ms",
               }}
             >
-              {saving ? "Assigning…" : "Assign"}
+              {saving ? "Assigning…" : previewing ? "Checking…" : "Assign"}
             </button>
           </div>
         )}

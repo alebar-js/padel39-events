@@ -22,6 +22,7 @@ export type MatchRow = {
   team2Id: string | null;
   winnerId: string | null;
   sets: SetScore[];
+  scheduledTime: string | null;
 };
 
 export type TeamMap = Record<string, string>; // id → "Player1 / Player2"
@@ -58,6 +59,7 @@ export default async function BracketPage({ params }: { params: Params }) {
       team2Id: m.team2Id?.toString() ?? null,
       winnerId: m.winnerId?.toString() ?? null,
       sets: (m.sets ?? []).map((s) => ({ team1: s.team1, team2: s.team2 })),
+      scheduledTime: m.scheduledTime?.toISOString() ?? null,
     }));
 
   const hasBracket = matchRows.length > 0;

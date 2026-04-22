@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import { connectDB } from "../db";
 import { Match } from "../models/Match";
 import { Court } from "../models/Court";
+import { Team } from "../models/Team";
 
 function fmtTime(d: Date): string {
   const h = d.getUTCHours();
@@ -50,23 +51,15 @@ export async function validateMatchSlot(
         { team1Id: { $in: teamIds } },
         { team2Id: { $in: teamIds } },
       ],
-    })
-      .populate<{ team1Id: { player1: string; player2: string } | null }>("team1Id", "player1 player2")
-      .populate<{ team2Id: { player1: string; player2: string } | null }>("team2Id", "player1 player2")
-      .lean();
+    }).lean();
 
     if (teamConflict) {
       const conflictingIds = new Set(teamIds.map((id) => id.toString()));
-      // Figure out which team is shared
-      const t1 = teamConflict.team1Id as { player1: string; player2: string } | null;
-      const t2 = teamConflict.team2Id as { player1: string; player2: string } | null;
-      const sharedTeam =
-        t1 && conflictingIds.has((teamConflict as unknown as { team1Id: { _id: mongoose.Types.ObjectId } }).team1Id?._id?.toString() ?? "")
-          ? `${t1.player1} / ${t1.player2}`
-          : t2
-          ? `${t2.player1} / ${t2.player2}`
-          : "A pair";
-      errors.push(`${sharedTeam} is already playing another match at ${fmtTime(when)}.`);
+      const sharedTeamId = [teamConflict.team1Id, teamConflict.team2Id]
+        .find((id) => id && conflictingIds.has(id.toString()));
+      const team = sharedTeamId ? await Team.findById(sharedTeamId).lean() : null;
+      const label = team ? `${team.player1} / ${team.player2}` : "A pair";
+      errors.push(`${label} is already playing another match at ${fmtTime(when)}.`);
     }
   }
 

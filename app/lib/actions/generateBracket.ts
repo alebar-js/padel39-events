@@ -19,6 +19,23 @@ function r1Size(n: number): number {
   return nextPow2(Math.ceil(n / 2));
 }
 
+// Standard single-elimination seeding order: returns the "high seed" per R1
+// match, in bracketSlot order. The low seed of match i is 2*size + 1 - order[i].
+// Guarantees seeds 1 and 2 are in opposite halves, 3 and 4 in opposite quarters, etc.
+function seedOrder(size: number): number[] {
+  let order = [1];
+  while (order.length < size) {
+    const next: number[] = [];
+    const totalSeeds = order.length * 2;
+    for (const s of order) {
+      next.push(s);
+      next.push(totalSeeds + 1 - s);
+    }
+    order = next;
+  }
+  return order;
+}
+
 // Name rounds by distance from the Final.
 // slot 1 = Final; 2,3 = SF; 4..7 = QF; 8..15 = R16; deeper = R1 generic.
 function roundName(slot: number, size: number): string {
@@ -57,48 +74,37 @@ export async function generateBracket(
 
   // Prepare a map of slot -> {team1Id, team2Id} for pre-filling bye seeds
   const slotTeams: Record<number, { team1Id?: mongoose.Types.ObjectId; team2Id?: mongoose.Types.ObjectId }> = {};
-
-  // Seeds 1..byes skip R1 — place them directly into their R2 slot
-  // R1 slots are size..size*2-1 (left to right)
-  // R2 slots are size/2..size-1
-  // R1 slot (size + i) feeds into R2 slot Math.floor((size + i) / 2)
-  // team1Id if (size+i) is even, team2Id if odd
-  for (let i = 0; i < byes; i++) {
-    const byeSeed = teams[i]; // seeds 1..byes (0-indexed: 0..byes-1)
-    const r1Slot = size + i;
-    const r2Slot = Math.floor(r1Slot / 2);
-    const isEven = r1Slot % 2 === 0;
-    if (!slotTeams[r2Slot]) slotTeams[r2Slot] = {};
-    if (isEven) {
-      slotTeams[r2Slot].team1Id = byeSeed._id as mongoose.Types.ObjectId;
-    } else {
-      slotTeams[r2Slot].team2Id = byeSeed._id as mongoose.Types.ObjectId;
-    }
-  }
-
-  // Seeds byes+1..teams.length fill R1 in pairs: (byes+1 vs N), (byes+2 vs N-1)...
-  const r1Teams = teams.slice(byes); // unseeded block
-  const r1Matches: { team1Id?: mongoose.Types.ObjectId; team2Id?: mongoose.Types.ObjectId }[] = [];
-  const half = Math.floor(r1Teams.length / 2);
-  for (let i = 0; i < half; i++) {
-    r1Matches.push({
-      team1Id: r1Teams[i]._id as mongoose.Types.ObjectId,
-      team2Id: r1Teams[r1Teams.length - 1 - i]._id as mongoose.Types.ObjectId,
-    });
-  }
-  // If odd number in r1Teams, the middle one gets a bye (paired with null)
-  if (r1Teams.length % 2 === 1) {
-    r1Matches.push({ team1Id: r1Teams[half]._id as mongoose.Types.ObjectId });
-  }
-
-  // Build list of live R1 slots (actual matches to play) and their team pairs
   const liveR1: { slot: number; team1Id?: mongoose.Types.ObjectId; team2Id?: mongoose.Types.ObjectId }[] = [];
-  for (let mi = 0; mi < r1Matches.length; mi++) {
-    const slot = size + byes + mi;
-    const pair = r1Matches[mi];
-    if (pair.team1Id || pair.team2Id) {
-      liveR1.push({ slot, team1Id: pair.team1Id, team2Id: pair.team2Id });
+
+  // Standard bracket seeding: each R1 match pairs order[i] vs (2*size + 1 - order[i]).
+  // Seeds 1..byes skip R1 and advance into their R2 parent.
+  const order = seedOrder(size);
+  for (let i = 0; i < size; i++) {
+    const highSeed = order[i];
+    const lowSeed = 2 * size + 1 - highSeed;
+    const highTeam = highSeed <= teams.length ? teams[highSeed - 1] : null;
+    const lowTeam = lowSeed <= teams.length ? teams[lowSeed - 1] : null;
+    const r1Slot = size + i;
+
+    if (highTeam && lowTeam) {
+      // Full R1 match
+      liveR1.push({
+        slot: r1Slot,
+        team1Id: highTeam._id as mongoose.Types.ObjectId,
+        team2Id: lowTeam._id as mongoose.Types.ObjectId,
+      });
+    } else if (highTeam && !lowTeam) {
+      // High seed gets a bye — advance into R2 parent
+      const r2Slot = Math.floor(r1Slot / 2);
+      const isEven = r1Slot % 2 === 0;
+      if (!slotTeams[r2Slot]) slotTeams[r2Slot] = {};
+      if (isEven) {
+        slotTeams[r2Slot].team1Id = highTeam._id as mongoose.Types.ObjectId;
+      } else {
+        slotTeams[r2Slot].team2Id = highTeam._id as mongoose.Types.ObjectId;
+      }
     }
+    // else: neither team exists — no match at this slot
   }
 
   // An upper-round slot is "live" if it's an ancestor of a live R1 slot
