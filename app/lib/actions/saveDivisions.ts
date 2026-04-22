@@ -39,6 +39,7 @@ export async function saveDivisions(
       name: p.name,
       format: p.format,
       matchFormat: p.matchFormat,
+      groupPlayoffState: p.format === "GROUP_PLAYOFF" ? "GROUP_STAGE" : undefined,
     }))
   );
 

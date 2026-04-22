@@ -9,6 +9,7 @@ import { SidebarNav, StatusChip } from "@/app/components/chrome";
 import { Btn } from "@/app/components/primitives";
 import { toDisplayStatus, fmtDateRange } from "@/app/lib/data";
 import { DivisionSelector, QuickAddForm, BulkAddForm, SortableRoster } from "./client";
+import EditInfoButton from "./edit-info-button";
 
 type Params = Promise<{ slug: string }>;
 type SP = Promise<{ d?: string }>;
@@ -53,6 +54,31 @@ export default async function TournamentDetailPage({
     teamCount: teamCounts[i],
   }));
 
+  const toDateInput = (d: Date) => d.toISOString().slice(0, 10);
+  const tournamentForModal = {
+    id: tournament._id.toString(),
+    name: tournament.name,
+    slug: tournament.slug,
+    venue: tournament.venue ?? "",
+    startDate: toDateInput(tournament.startDate),
+    endDate: toDateInput(tournament.endDate),
+    status: tournament.status,
+  };
+  const divisionsForModal = divisions.map((d, i) => ({
+    id: d._id.toString(),
+    name: d.name,
+    format: d.format,
+    matchFormat: d.matchFormat,
+    teamCount: teamCounts[i],
+    groupPlayoffConfig: d.groupPlayoffConfig
+      ? {
+          groupSize: d.groupPlayoffConfig.groupSize,
+          playoffSize: d.groupPlayoffConfig.playoffSize,
+          qualifyingMode: d.groupPlayoffConfig.qualifyingMode,
+        }
+      : undefined,
+  }));
+
   return (
     <div className="wf screen" style={{ flexDirection: "row" }}>
       <SidebarNav />
@@ -77,17 +103,43 @@ export default async function TournamentDetailPage({
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <Btn small>Edit info</Btn>
+              <EditInfoButton tournament={tournamentForModal} divisions={divisionsForModal} />
               <Link href={`/admin/t/${slug}/schedule`} style={{ textDecoration: "none" }}>
                 <Btn small>Schedule</Btn>
               </Link>
               {activeDivision ? (
-                <Link
-                  href={`/admin/t/${slug}/d/${activeDivision._id}/bracket`}
-                  style={{ textDecoration: "none" }}
-                >
-                  <Btn small primary>Brackets →</Btn>
-                </Link>
+                activeDivision.format === "GROUP_PLAYOFF" ? (
+                  activeDivision.groupPlayoffState === "PLAYOFF_STAGE" ? (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <Link
+                        href={`/admin/t/${slug}/d/${activeDivision._id}/groups`}
+                        style={{ textDecoration: "none" }}
+                      >
+                        <Btn small>Group Results</Btn>
+                      </Link>
+                      <Link
+                        href={`/admin/t/${slug}/d/${activeDivision._id}/bracket`}
+                        style={{ textDecoration: "none" }}
+                      >
+                        <Btn small primary>Playoffs</Btn>
+                      </Link>
+                    </div>
+                  ) : (
+                    <Link
+                      href={`/admin/t/${slug}/d/${activeDivision._id}/groups`}
+                      style={{ textDecoration: "none" }}
+                    >
+                      <Btn small primary>Group Stage</Btn>
+                    </Link>
+                  )
+                ) : (
+                  <Link
+                    href={`/admin/t/${slug}/d/${activeDivision._id}/bracket`}
+                    style={{ textDecoration: "none" }}
+                  >
+                    <Btn small primary>Brackets →</Btn>
+                  </Link>
+                )
               ) : (
                 <Btn small primary>Brackets →</Btn>
               )}

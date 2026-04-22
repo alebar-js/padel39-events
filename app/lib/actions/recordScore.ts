@@ -16,7 +16,7 @@ export async function recordScore(
 
   const match = await Match.findById(matchId);
   if (!match) return { error: "Match not found." };
-  if (!match.bracketSlot) return { error: "Match has no bracket slot." };
+  if (!match.bracketSlot && !match.isGroupStage) return { error: "Match has no bracket slot." };
   if (!match.team1Id || !match.team2Id) return { error: "Match is missing a team." };
 
   const division = await Division.findById(match.divisionId).lean();
@@ -45,23 +45,30 @@ export async function recordScore(
   match.winnerId = winnerId ?? undefined;
   await match.save();
 
-  // Propagate winner to parent match
-  const parentSlot = Math.floor(match.bracketSlot / 2);
-  if (parentSlot >= 1) {
-    const parentMatch = await Match.findOne({
-      divisionId: match.divisionId,
-      bracketSlot: parentSlot,
-      isConsolation: false,
-    });
-    if (parentMatch) {
-      // Even slot → team1 of parent, odd slot → team2 of parent
-      const slotIsEven = match.bracketSlot % 2 === 0;
-      if (slotIsEven) parentMatch.team1Id = winnerId ?? undefined;
-      else parentMatch.team2Id = winnerId ?? undefined;
-      await parentMatch.save();
+  // Propagate winner to parent match (only for bracket matches)
+  if (!match.isGroupStage && match.bracketSlot) {
+    const parentSlot = Math.floor(match.bracketSlot / 2);
+    if (parentSlot >= 1) {
+      const parentMatch = await Match.findOne({
+        divisionId: match.divisionId,
+        bracketSlot: parentSlot,
+        isConsolation: false,
+      });
+      if (parentMatch) {
+        // Even slot -> team1 of parent, odd slot -> team2 of parent
+        const slotIsEven = match.bracketSlot % 2 === 0;
+        if (slotIsEven) parentMatch.team1Id = winnerId ?? undefined;
+        else parentMatch.team2Id = winnerId ?? undefined;
+        await parentMatch.save();
+      }
     }
   }
 
-  revalidatePath(`/admin/t/${tournamentSlug}/d/${divisionId}/bracket`);
+  // Revalidate appropriate path
+  if (match.isGroupStage) {
+    revalidatePath(`/admin/t/${tournamentSlug}/d/${divisionId}/groups`);
+  } else {
+    revalidatePath(`/admin/t/${tournamentSlug}/d/${divisionId}/bracket`);
+  }
   return {};
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Btn, SketchBox } from "@/app/components/primitives";
 import { addTeam, deleteTeam, reorderTeams, type AddTeamState } from "@/app/lib/actions/addTeam";
@@ -141,6 +141,7 @@ export function QuickAddForm({
 }) {
   const [state, action, pending] = useActionState<AddTeamState, FormData>(addTeam, null);
   const formRef = useRef<HTMLFormElement>(null);
+  const router = useRouter();
 
   return (
     <form
@@ -148,6 +149,7 @@ export function QuickAddForm({
       action={async (fd) => {
         await action(fd);
         formRef.current?.reset();
+        router.refresh();
       }}
       style={{ display: "flex", flexDirection: "column", gap: 8 }}
     >
@@ -178,6 +180,7 @@ export function BulkAddForm({
   const [state, action, pending] = useActionState<BulkAddTeamsState, FormData>(bulkAddTeams, null);
   const formRef = useRef<HTMLFormElement>(null);
   const [raw, setRaw] = useState("");
+  const router = useRouter();
 
   const pairCount = raw
     .split("\n")
@@ -192,6 +195,7 @@ export function BulkAddForm({
         await action(fd);
         setRaw("");
         formRef.current?.reset();
+        router.refresh();
       }}
       style={{ display: "flex", flexDirection: "column", gap: 8 }}
     >
@@ -244,9 +248,18 @@ export function SortableRoster({
   initialTeams: TeamRow[];
   tournamentSlug: string;
 }) {
-  const [teams, setTeams] = useState<TeamRow[]>(initialTeams);
+  const [override, setOverride] = useState<TeamRow[] | null>(null);
   const dragIdx = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
+  const router = useRouter();
+
+  // Clear drag-reorder override when fresh server data arrives.
+  const signature = initialTeams.map((t) => `${t.id}:${t.seed}`).join("|");
+  useEffect(() => {
+    setOverride(null);
+  }, [signature]);
+
+  const teams = override ?? initialTeams;
 
   function handleDragStart(i: number) {
     dragIdx.current = i;
@@ -268,7 +281,7 @@ export function SortableRoster({
     const [moved] = next.splice(from, 1);
     next.splice(targetIdx, 0, moved);
     const reseeded = next.map((t, i) => ({ ...t, seed: i + 1 }));
-    setTeams(reseeded);
+    setOverride(reseeded);
     dragIdx.current = null;
     setDragOver(null);
     reorderTeams(reseeded.map((t) => t.id), tournamentSlug);
@@ -328,7 +341,7 @@ export function SortableRoster({
           </span>
           <span>{t.player1}</span>
           <span>{t.player2}</span>
-          <form action={() => deleteTeam(t.id, tournamentSlug)}>
+          <form action={async () => { await deleteTeam(t.id, tournamentSlug); router.refresh(); }}>
             <button
               type="submit"
               title="Remove team"
