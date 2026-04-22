@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tee /tmp/dev-server.log)",
+      "Bash(curl -s -o /dev/null -w \"/: %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"/?empty=1: %{http_code}\\\\n\" 'http://localhost:3000/?empty=1')",
+      "Bash(curl -s -o /dev/null -w \"/?view=table: %{http_code}\\\\n\" 'http://localhost:3000/?view=table')",
+      "Bash(curl -s -o /dev/null -w \"/new: %{http_code}\\\\n\" http://localhost:3000/new)",
+      "Bash(curl -s -o /dev/null -w \"/t/spring-open-2026: %{http_code}\\\\n\" http://localhost:3000/t/spring-open-2026)",
+      "Bash(npm install *)",
+      "Bash(node -e ' *)",
+      "Bash(npx tsc *)",
+      "Bash(xargs ls *)",
+      "Bash(curl -s http://localhost:3000/admin)",
+      "Bash(curl -s http://localhost:3000/admin/t/nadal-2026/schedule)",
+      "Bash(git stash *)",
+      "Bash(grep -v \"^\\\\s*$\")"
+    ],
+    "additionalDirectories": [
+      "/Users/alebar/Projects/padel39-events/app",
+      "/Users/alebar/Projects/padel39-events/app/lib",
+      "/Users/alebar/Projects/padel39-events/app/admin/new/[id]",
+      "/Users/alebar/Projects/padel39-events/app/admin/t",
+      "/Users/alebar/Projects/padel39-events/app/admin/t/[slug]/d/[divisionId]",
+      "/Users/alebar/Projects/padel39-events/app/admin/t/[slug]"
+    ]
+  }
+}
