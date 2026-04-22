@@ -41,7 +41,7 @@ export type MatchRow = {
   scheduledTime: string | null;
 };
 
-export type DivisionRow = { id: string; name: string };
+export type DivisionRow = { id: string; name: string; format: string; slug: string };
 
 export default async function SchedulePage({ params }: { params: Params }) {
   const { slug } = await params;
@@ -110,6 +110,8 @@ export default async function SchedulePage({ params }: { params: Params }) {
   const divisionRows: DivisionRow[] = divisions.map((d) => ({
     id: d._id.toString(),
     name: d.name,
+    format: d.format,
+    slug,
   }));
 
   return (

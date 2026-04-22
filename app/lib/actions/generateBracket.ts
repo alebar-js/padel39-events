@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { connectDB } from "../db";
 import { Team } from "../models/Team";
 import { Match } from "../models/Match";
+import { Division } from "../models/Division";
+import { computeMainShape, computeBackDrawLayout } from "./backDraw";
 import mongoose from "mongoose";
 
 function nextPow2(n: number): number {
@@ -62,11 +64,13 @@ export async function generateBracket(
   const teams = await Team.find({ divisionId: divId }).sort({ seed: 1 }).lean();
   if (teams.length < 2) return { error: "Need at least 2 teams to generate a bracket." };
 
-  const size = r1Size(teams.length);
-  const byes = 2 * size - teams.length;
+  const division = await Division.findById(divId).lean();
+  if (!division) return { error: "Division not found." };
 
-  // Clear existing non-consolation matches
-  await Match.deleteMany({ divisionId: divId, isConsolation: false });
+  const size = r1Size(teams.length);
+
+  // Clear existing bracket matches (both main and back-draw)
+  await Match.deleteMany({ divisionId: divId, bracketSlot: { $exists: true } });
 
   // Build all match slots (1..size*2-1), indexed by bracketSlot
   // Upper rounds: slots 1..size-1 (Finals down to R2)
@@ -153,6 +157,22 @@ export async function generateBracket(
   }
 
   await Match.insertMany(docs);
+
+  // Back-draw skeleton (only for SINGLE_ELIM_CONSOLATION divisions)
+  if (division.format === "SINGLE_ELIM_CONSOLATION") {
+    const shape = computeMainShape(teams.length, size);
+    const backLayout = computeBackDrawLayout(shape);
+    if (backLayout.matches.length > 0) {
+      const backDocs = backLayout.matches.map((m) => ({
+        divisionId: divId,
+        round: m.round,
+        bracketSlot: m.slot,
+        isConsolation: true,
+      }));
+      await Match.insertMany(backDocs);
+    }
+  }
+
   revalidatePath(`/admin/t/${tournamentSlug}`);
   return {};
 }

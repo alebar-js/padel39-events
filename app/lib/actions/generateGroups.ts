@@ -32,7 +32,18 @@ export async function generateGroups(divisionId: string, tournamentSlug: string)
   console.log("Cleaning up existing data...");
   await Promise.all([
     Group.deleteMany({ divisionId: divOid }),
-    Match.deleteMany({ divisionId: divOid, isGroupStage: true }),
+    // Historically, some group-stage matches were created without isGroupStage=true,
+    // which leaves behind orphaned duplicates that render as TBD in the scheduler.
+    // Be conservative and delete anything that looks like a group match.
+    Match.deleteMany({
+      divisionId: divOid,
+      $or: [
+        { isGroupStage: true },
+        { phase: "GROUP" },
+        { round: "Group Stage" },
+        { groupId: { $exists: true } },
+      ],
+    }),
     Team.updateMany({ divisionId: divOid }, { $unset: { groupId: 1 } }),
   ]);
 
@@ -87,6 +98,7 @@ export async function generateGroups(divisionId: string, tournamentSlug: string)
           team2Id: groupTeams[j]._id,
           round: "Group Stage",
           isGroupStage: true,
+          phase: "GROUP",
           bracketSlot: null,
           sets: [],
         });

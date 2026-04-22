@@ -39,7 +39,7 @@ export default async function BracketPage({ params }: { params: Params }) {
     Tournament.findOne({ slug }).lean(),
     Division.findById(divOid).lean(),
     Team.find({ divisionId: divOid }).sort({ seed: 1 }).lean(),
-    Match.find({ divisionId: divOid, isConsolation: false }).sort({ bracketSlot: 1 }).lean(),
+    Match.find({ divisionId: divOid, bracketSlot: { $exists: true } }).sort({ bracketSlot: 1 }).lean(),
   ]);
 
   if (!tournament || !division) notFound();
@@ -49,7 +49,7 @@ export default async function BracketPage({ params }: { params: Params }) {
     teamMap[t._id.toString()] = `${t.player1} / ${t.player2}`;
   }
 
-  const matchRows: MatchRow[] = matches
+  const allRows: (MatchRow & { isConsolation: boolean })[] = matches
     .filter((m) => m.bracketSlot != null)
     .map((m) => ({
       id: m._id.toString(),
@@ -60,9 +60,18 @@ export default async function BracketPage({ params }: { params: Params }) {
       winnerId: m.winnerId?.toString() ?? null,
       sets: (m.sets ?? []).map((s) => ({ team1: s.team1, team2: s.team2 })),
       scheduledTime: m.scheduledTime?.toISOString() ?? null,
+      isConsolation: !!m.isConsolation,
     }));
 
-  const hasBracket = matchRows.length > 0;
+  const mainRows: MatchRow[] = allRows.filter((m) => !m.isConsolation).map(({ isConsolation: _c, ...r }) => r);
+  const backRows: MatchRow[] = allRows.filter((m) => m.isConsolation).map(({ isConsolation: _c, ...r }) => r);
+
+  // Ensure all data is serializable plain objects
+  const serializableMainRows = JSON.parse(JSON.stringify(mainRows));
+  const serializableBackRows = JSON.parse(JSON.stringify(backRows));
+  const serializableTeamMap = JSON.parse(JSON.stringify(teamMap));
+
+  const hasBracket = mainRows.length > 0;
 
   async function generate() {
     "use server";
@@ -160,8 +169,9 @@ export default async function BracketPage({ params }: { params: Params }) {
           </div>
         ) : (
           <BracketView
-            matches={matchRows}
-            teamMap={teamMap}
+            matches={serializableMainRows}
+            backMatches={serializableBackRows}
+            teamMap={serializableTeamMap}
             divisionId={divisionId}
             tournamentSlug={slug}
             matchFormat={(division.matchFormat ?? "BEST_OF_3") as MatchFormat}

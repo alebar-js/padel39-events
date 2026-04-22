@@ -29,7 +29,7 @@ function groupByRound(matches: MatchRow[], size: number): MatchRow[][] {
 
 // ─── Match card ───────────────────────────────────────────────────────────────
 
-const CARD_H = 88;
+const CARD_H = 112;
 const CARD_W = 240;
 const CARD_GAP = 16;
 
@@ -135,11 +135,18 @@ function MatchCard({
             }}
           >
             {w && w === id && (
-              <span style={{ color: "var(--green)", fontSize: 11 }}>✓</span>
+              <span style={{ color: "var(--green)", fontSize: 11, alignSelf: "center" }}>✓</span>
             )}
-            <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {name ?? (isTbd ? "TBD" : "")}
-            </span>
+            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
+              {name
+                ? name.split(" / ").map((player, pi) => (
+                    <span key={pi} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13 }}>
+                      {player}
+                    </span>
+                  ))
+                : <span style={{ fontSize: 13 }}>{isTbd ? "TBD" : ""}</span>
+              }
+            </div>
             {!isEmpty && <SetBoxes sets={match.sets} team={team} maxSets={maxSets} />}
           </div>
         ))}
@@ -313,9 +320,10 @@ function ScoreDrawer({
                     Set {i + 1}
                   </div>
                   <input
-                    type="number"
-                    min={0}
-                    max={99}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={2}
                     value={s.team1 || ""}
                     onChange={(e) => updateSet(i, 1, e.target.value)}
                     placeholder="–"
@@ -323,9 +331,10 @@ function ScoreDrawer({
                   />
                   <span className="muted" style={{ fontSize: 14 }}>–</span>
                   <input
-                    type="number"
-                    min={0}
-                    max={99}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={2}
                     value={s.team2 || ""}
                     onChange={(e) => updateSet(i, 2, e.target.value)}
                     placeholder="–"
@@ -419,23 +428,24 @@ const ROUND_LABELS: Record<string, string> = {
   QF: "Quarterfinals",
   SF: "Semifinals",
   Final: "Final",
+  "B-R1": "Back Draw · Round 1",
+  "B-R16": "Back Draw · R16",
+  "B-QF": "Back Draw · QF",
+  "B-SF": "Back Draw · SF",
+  "B-Final": "Back Draw · Final",
 };
 
-export function BracketView({
+function BracketTree({
   matches,
   teamMap,
-  divisionId,
-  tournamentSlug,
   matchFormat,
+  onSelect,
 }: {
   matches: MatchRow[];
   teamMap: TeamMap;
-  divisionId: string;
-  tournamentSlug: string;
   matchFormat: MatchFormat;
+  onSelect: (m: MatchRow) => void;
 }) {
-  const [selected, setSelected] = useState<MatchRow | null>(null);
-
   const size = bracketSize(matches);
   const rounds = groupByRound(matches, size);
 
@@ -459,123 +469,174 @@ export function BracketView({
   const CONNECTOR_W = 40;
   const liveSlots = new Set(matches.map((m) => m.bracketSlot));
 
-  // Keep selected in sync with latest data from props (after server action revalidates)
-  const currentSelected = selected ? matches.find((m) => m.id === selected.id) ?? null : null;
-
   // Label height + gap above each round column — connectors need to line up with cards,
   // so we offset the SVG by this header height too.
   const HEADER_H = 11 + 4 + 8; // label fontSize + marginBottom + flex gap (see column below)
 
   return (
-    <div style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", minWidth: "max-content" }}>
-        {rounds.map((roundMatches, ri) => {
-          const label = ROUND_LABELS[roundMatches[0]?.round] ?? roundMatches[0]?.round;
-          const nextRound = rounds[ri + 1];
-          return (
-            <Fragment key={ri}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div
-                  className="muted"
-                  style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}
-                >
-                  {label}
-                </div>
-                <div style={{ position: "relative", width: CARD_W, height: totalH }}>
-                  {roundMatches.map((m) => (
-                    <MatchCard
-                      key={m.id}
-                      match={m}
-                      teamMap={teamMap}
-                      top={yBySlot.get(m.bracketSlot) ?? 0}
-                      matchFormat={matchFormat}
-                      onClick={setSelected}
-                    />
-                  ))}
-                </div>
+    <div style={{ display: "flex", alignItems: "flex-start", minWidth: "max-content" }}>
+      {rounds.map((roundMatches, ri) => {
+        const label = ROUND_LABELS[roundMatches[0]?.round] ?? roundMatches[0]?.round;
+        const nextRound = rounds[ri + 1];
+        return (
+          <Fragment key={ri}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div
+                className="muted"
+                style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 4 }}
+              >
+                {label}
               </div>
+              <div style={{ position: "relative", width: CARD_W, height: totalH }}>
+                {roundMatches.map((m) => (
+                  <MatchCard
+                    key={m.id}
+                    match={m}
+                    teamMap={teamMap}
+                    top={yBySlot.get(m.bracketSlot) ?? 0}
+                    matchFormat={matchFormat}
+                    onClick={onSelect}
+                  />
+                ))}
+              </div>
+            </div>
 
-              {nextRound && (
-                <div style={{ width: CONNECTOR_W, paddingTop: HEADER_H, flexShrink: 0 }}>
-                  <svg
-                    width={CONNECTOR_W}
-                    height={totalH}
-                    style={{ display: "block", overflow: "visible" }}
-                  >
-                    {nextRound.map((parent) => {
-                      const c1Slot = parent.bracketSlot * 2;
-                      const c2Slot = parent.bracketSlot * 2 + 1;
-                      const pY = yBySlot.get(parent.bracketSlot);
-                      if (pY === undefined) return null;
-                      const parentMid = pY + CARD_H / 2;
-                      const midX = CONNECTOR_W / 2;
-                      const segs: React.ReactNode[] = [];
+            {nextRound && (
+              <div style={{ width: CONNECTOR_W, paddingTop: HEADER_H, flexShrink: 0 }}>
+                <svg
+                  width={CONNECTOR_W}
+                  height={totalH}
+                  style={{ display: "block", overflow: "visible" }}
+                >
+                  {nextRound.map((parent) => {
+                    const c1Slot = parent.bracketSlot * 2;
+                    const c2Slot = parent.bracketSlot * 2 + 1;
+                    const pY = yBySlot.get(parent.bracketSlot);
+                    if (pY === undefined) return null;
+                    const parentMid = pY + CARD_H / 2;
+                    const midX = CONNECTOR_W / 2;
+                    const segs: React.ReactNode[] = [];
 
-                      // Only draw stubs for children that have a live match (skip byes).
-                      const liveChildMids: number[] = [];
-                      for (const cSlot of [c1Slot, c2Slot]) {
-                        if (!liveSlots.has(cSlot)) continue;
-                        const cY = yBySlot.get(cSlot);
-                        if (cY === undefined) continue;
-                        const childMid = cY + CARD_H / 2;
-                        liveChildMids.push(childMid);
+                    const liveChildMids: number[] = [];
+                    for (const cSlot of [c1Slot, c2Slot]) {
+                      if (!liveSlots.has(cSlot)) continue;
+                      const cY = yBySlot.get(cSlot);
+                      if (cY === undefined) continue;
+                      const childMid = cY + CARD_H / 2;
+                      liveChildMids.push(childMid);
+                      segs.push(
+                        <line
+                          key={`h-${parent.id}-${cSlot}`}
+                          x1={0}
+                          y1={childMid}
+                          x2={midX}
+                          y2={childMid}
+                          stroke="var(--line-soft)"
+                          strokeWidth={1.5}
+                        />
+                      );
+                    }
+
+                    if (liveChildMids.length > 0) {
+                      const points = [...liveChildMids, parentMid];
+                      const yTop = Math.min(...points);
+                      const yBot = Math.max(...points);
+                      if (yTop !== yBot) {
                         segs.push(
                           <line
-                            key={`h-${parent.id}-${cSlot}`}
-                            x1={0}
-                            y1={childMid}
-                            x2={midX}
-                            y2={childMid}
-                            stroke="var(--line-soft)"
-                            strokeWidth={1.5}
-                          />
-                        );
-                      }
-
-                      if (liveChildMids.length > 0) {
-                        // Vertical join at midX spanning from the topmost point to the bottommost
-                        // point among the live children and the parent's mid. With two live children
-                        // this connects them; with one live child + bye, it still bridges up/down to
-                        // the parent's y-level.
-                        const points = [...liveChildMids, parentMid];
-                        const yTop = Math.min(...points);
-                        const yBot = Math.max(...points);
-                        if (yTop !== yBot) {
-                          segs.push(
-                            <line
-                              key={`v-${parent.id}`}
-                              x1={midX}
-                              y1={yTop}
-                              x2={midX}
-                              y2={yBot}
-                              stroke="var(--line-soft)"
-                              strokeWidth={1.5}
-                            />
-                          );
-                        }
-
-                        // Horizontal from midX to the parent's left edge at parent's vertical mid.
-                        segs.push(
-                          <line
-                            key={`p-${parent.id}`}
+                            key={`v-${parent.id}`}
                             x1={midX}
-                            y1={parentMid}
-                            x2={CONNECTOR_W}
-                            y2={parentMid}
+                            y1={yTop}
+                            x2={midX}
+                            y2={yBot}
                             stroke="var(--line-soft)"
                             strokeWidth={1.5}
                           />
                         );
                       }
 
-                      return <g key={parent.id}>{segs}</g>;
-                    })}
-                  </svg>
-                </div>
-              )}
-            </Fragment>
-          );
-        })}
+                      segs.push(
+                        <line
+                          key={`p-${parent.id}`}
+                          x1={midX}
+                          y1={parentMid}
+                          x2={CONNECTOR_W}
+                          y2={parentMid}
+                          stroke="var(--line-soft)"
+                          strokeWidth={1.5}
+                        />
+                      );
+                    }
+
+                    return <g key={parent.id}>{segs}</g>;
+                  })}
+                </svg>
+              </div>
+            )}
+          </Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+export function BracketView({
+  matches,
+  backMatches,
+  teamMap,
+  divisionId,
+  tournamentSlug,
+  matchFormat,
+}: {
+  matches: MatchRow[];
+  backMatches: MatchRow[];
+  teamMap: TeamMap;
+  divisionId: string;
+  tournamentSlug: string;
+  matchFormat: MatchFormat;
+}) {
+  const [selected, setSelected] = useState<MatchRow | null>(null);
+  const [tab, setTab] = useState<"main" | "back">("main");
+
+  const allMatches = [...matches, ...backMatches];
+  const currentSelected = selected ? allMatches.find((m) => m.id === selected.id) ?? null : null;
+  const hasBackDraw = backMatches.length > 0;
+
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      {hasBackDraw && (
+        <div style={{ display: "flex", gap: 4, padding: "12px 32px 0", borderBottom: "1px solid var(--paper-2)" }}>
+          {(["main", "back"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                padding: "7px 16px",
+                fontSize: 13,
+                fontFamily: "Poppins, sans-serif",
+                fontWeight: tab === t ? 600 : 400,
+                background: "none",
+                border: "none",
+                borderBottom: `2px solid ${tab === t ? "var(--green)" : "transparent"}`,
+                borderRadius: 0,
+                cursor: "pointer",
+                color: tab === t ? "var(--ink)" : "var(--ink-muted)",
+                marginBottom: -1,
+              }}
+            >
+              {t === "main" ? "Main Draw" : "Back Draw"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
+        <BracketTree
+          matches={tab === "main" || !hasBackDraw ? matches : backMatches}
+          teamMap={teamMap}
+          matchFormat={matchFormat}
+          onSelect={setSelected}
+        />
       </div>
 
       {currentSelected && (

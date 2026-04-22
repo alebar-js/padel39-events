@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ScheduleGrid } from "./client";
 import CourtModal from "./court-modal";
 import HeaderWithButton from "./header-with-button";
+import DayScheduleModal from "./day-schedule-modal";
 import type { CourtRow, DayRow, MatchRow, DivisionRow } from "./page";
 
 interface ScheduleClientProps {
@@ -26,6 +27,7 @@ export default function ScheduleClient({
   tournamentId 
 }: ScheduleClientProps) {
   const [showCourtModal, setShowCourtModal] = useState(false);
+  const [showDayScheduleModal, setShowDayScheduleModal] = useState(false);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -44,6 +46,8 @@ export default function ScheduleClient({
         matches={matches}
         divisions={divisions}
         tournamentSlug={tournamentSlug}
+        onEditCourts={() => setShowCourtModal(true)}
+        onEditDaySchedules={() => setShowDayScheduleModal(true)}
       />
       
       <CourtModal 
@@ -52,6 +56,13 @@ export default function ScheduleClient({
         courts={courts} 
         tournamentSlug={tournamentSlug} 
         tournamentId={tournamentId} 
+      />
+      <DayScheduleModal
+        isOpen={showDayScheduleModal}
+        onClose={() => setShowDayScheduleModal(false)}
+        days={days}
+        tournamentSlug={tournamentSlug}
+        tournamentId={tournamentId}
       />
     </div>
   );

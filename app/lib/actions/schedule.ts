@@ -6,7 +6,7 @@ import { Tournament } from "../models/Tournament";
 import { Court } from "../models/Court";
 import { TournamentDay } from "../models/TournamentDay";
 
-const DEFAULT_COURT_COUNT = 4;
+const DEFAULT_COURT_COUNT = 6;
 const DEFAULT_START_TIME = "09:00";
 const DEFAULT_END_TIME = "22:00";
 const DEFAULT_SLOT_MINUTES = 90;

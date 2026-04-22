@@ -82,6 +82,10 @@ export default async function GroupsPage({ params }: { params: Params }) {
     matches: matchRows.filter((m) => m.groupId === g._id.toString()),
   }));
 
+  // Ensure all data is serializable plain objects
+  const serializableTeamMap = JSON.parse(JSON.stringify(teamMap));
+  const serializableGroupRows = JSON.parse(JSON.stringify(groupRows));
+
   const hasGroups = groups.length > 0;
 
   async function generate() {
@@ -181,8 +185,8 @@ export default async function GroupsPage({ params }: { params: Params }) {
           </div>
         ) : (
           <GroupsView
-            groups={groupRows}
-            teamMap={teamMap}
+            groups={serializableGroupRows}
+            teamMap={serializableTeamMap}
             divisionId={divisionId}
             tournamentSlug={slug}
             matchFormat={(division.matchFormat ?? "BEST_OF_3") as MatchFormat}

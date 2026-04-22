@@ -4,7 +4,20 @@ import { revalidatePath } from "next/cache";
 import { connectDB } from "../db";
 import { Match, type MatchSet } from "../models/Match";
 import { Division } from "../models/Division";
+import { Team } from "../models/Team";
+import { computeMainShape, computeBackDrawLayout, isFirstMainMatchForTeam } from "./backDraw";
 import mongoose from "mongoose";
+
+function nextPow2(n: number): number {
+  let p = 1;
+  while (p < n) p <<= 1;
+  return p;
+}
+
+function r1Size(n: number): number {
+  if (n <= 2) return 1;
+  return nextPow2(Math.ceil(n / 2));
+}
 
 export async function recordScore(
   matchId: string,
@@ -38,21 +51,29 @@ export async function recordScore(
   }
 
   let winnerId: mongoose.Types.ObjectId | undefined;
-  if (team1Sets >= setsNeeded) winnerId = match.team1Id;
-  else if (team2Sets >= setsNeeded) winnerId = match.team2Id;
+  let loserId: mongoose.Types.ObjectId | undefined;
+  if (team1Sets >= setsNeeded) {
+    winnerId = match.team1Id;
+    loserId = match.team2Id;
+  } else if (team2Sets >= setsNeeded) {
+    winnerId = match.team2Id;
+    loserId = match.team1Id;
+  }
 
   match.sets = cleanSets;
   match.winnerId = winnerId ?? undefined;
   await match.save();
 
-  // Propagate winner to parent match (only for bracket matches)
+  // Propagate winner to parent match (only for bracket matches).
+  // Stay within the same bracket side — main winners feed main parents,
+  // back-draw winners feed back-draw parents.
   if (!match.isGroupStage && match.bracketSlot) {
     const parentSlot = Math.floor(match.bracketSlot / 2);
     if (parentSlot >= 1) {
       const parentMatch = await Match.findOne({
         divisionId: match.divisionId,
         bracketSlot: parentSlot,
-        isConsolation: false,
+        isConsolation: match.isConsolation,
       });
       if (parentMatch) {
         // Even slot -> team1 of parent, odd slot -> team2 of parent
@@ -60,6 +81,41 @@ export async function recordScore(
         if (slotIsEven) parentMatch.team1Id = winnerId ?? undefined;
         else parentMatch.team2Id = winnerId ?? undefined;
         await parentMatch.save();
+      }
+    }
+  }
+
+  // Route loser into the back draw (main-bracket matches only, SINGLE_ELIM_CONSOLATION).
+  if (
+    !match.isGroupStage &&
+    match.bracketSlot &&
+    !match.isConsolation &&
+    division.format === "SINGLE_ELIM_CONSOLATION" &&
+    loserId
+  ) {
+    const wasFirstMatch = await isFirstMainMatchForTeam(
+      Match as unknown as Parameters<typeof isFirstMainMatchForTeam>[0],
+      match.divisionId,
+      match._id as mongoose.Types.ObjectId,
+      loserId
+    );
+    if (wasFirstMatch) {
+      const teams = await Team.find({ divisionId: match.divisionId }).sort({ seed: 1 }).lean();
+      const size = r1Size(teams.length);
+      const shape = computeMainShape(teams.length, size);
+      const layout = computeBackDrawLayout(shape);
+      const target = layout.dropTargets.get(match.bracketSlot);
+      if (target) {
+        const backMatch = await Match.findOne({
+          divisionId: match.divisionId,
+          bracketSlot: target.backSlot,
+          isConsolation: true,
+        });
+        if (backMatch) {
+          if (target.position === 1) backMatch.team1Id = loserId;
+          else backMatch.team2Id = loserId;
+          await backMatch.save();
+        }
       }
     }
   }

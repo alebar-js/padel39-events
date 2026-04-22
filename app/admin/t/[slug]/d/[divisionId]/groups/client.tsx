@@ -2,6 +2,7 @@
 
 import { Fragment, useState, useEffect, useCallback } from "react";
 import { recordScore } from "@/app/lib/actions/recordScore";
+import { advanceToPlayoffs, isGroupStageComplete } from "@/app/lib/actions/advanceToPlayoffs";
 import type { GroupRow, MatchRow, TeamMap, MatchFormat, SetScore } from "./page";
 
 // Input styles for the drawer
@@ -181,9 +182,10 @@ function ScoreDrawer({
                     Set {i + 1}
                   </div>
                   <input
-                    type="number"
-                    min={0}
-                    max={99}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={2}
                     value={s.team1 || ""}
                     onChange={(e) => updateSet(i, 1, e.target.value)}
                     placeholder="0"
@@ -191,9 +193,10 @@ function ScoreDrawer({
                   />
                   <span className="muted" style={{ fontSize: 14 }}>-</span>
                   <input
-                    type="number"
-                    min={0}
-                    max={99}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={2}
                     value={s.team2 || ""}
                     onChange={(e) => updateSet(i, 2, e.target.value)}
                     placeholder="0"
@@ -245,7 +248,7 @@ function ScoreDrawer({
 }
 
 // Calculate group standings
-function calculateGroupStandings(teams: string[], matches: MatchRow[], teamMap: TeamMap) {
+function calculateGroupStandings(teams: string[], matches: MatchRow[], teamMap: TeamMap, matchFormat: MatchFormat) {
   const standings: Record<string, {
     teamId: string;
     teamName: string;
@@ -297,12 +300,22 @@ function calculateGroupStandings(teams: string[], matches: MatchRow[], teamMap: 
       team1.points += 1;
     }
 
-    // Update set counts
+    // Update set counts, with different logic for best-of-1 vs best-of-3
     for (const set of match.sets) {
-      team1.setsFor += set.team1;
-      team1.setsAgainst += set.team2;
-      team2.setsFor += set.team2;
-      team2.setsAgainst += set.team1;
+      let isSuperTieBreak = false;
+      
+      if (matchFormat === "BEST_OF_3") {
+        // In best-of-3: third set > 7 = super tie-breaker (exclude from Games +/-)
+        isSuperTieBreak = set.team1 > 7 || set.team2 > 7;
+      }
+      // In best-of-1: single set can go to 8+ (super set) - always include in Games +/-
+      
+      if (!isSuperTieBreak) {
+        team1.setsFor += set.team1;
+        team1.setsAgainst += set.team2;
+        team2.setsFor += set.team2;
+        team2.setsAgainst += set.team1;
+      }
     }
   }
 
@@ -453,7 +466,7 @@ function GroupCard({
   tournamentSlug: string;
 }) {
   const [selectedMatch, setSelectedMatch] = useState<MatchRow | null>(null);
-  const standings = calculateGroupStandings(group.teams, group.matches, teamMap);
+  const standings = calculateGroupStandings(group.teams, group.matches, teamMap, matchFormat);
   const orderedTeamIds = standings.map((s) => s.teamId);
 
   // Create match lookup map
@@ -686,10 +699,124 @@ export function GroupsView({
   matchFormat: MatchFormat;
   groupSize: number;
 }) {
+  const [isCheckingCompletion, setIsCheckingCompletion] = useState(false);
+  const [isAdvancing, setIsAdvancing] = useState(false);
+  const [groupComplete, setGroupComplete] = useState<boolean | null>(null);
+  const [error, setError] = useState("");
+
+  // Check if group stage is complete
+  useEffect(() => {
+    let cancelled = false;
+    
+    async function checkCompletion() {
+      setIsCheckingCompletion(true);
+      try {
+        const result = await isGroupStageComplete(divisionId);
+        if (!cancelled) {
+          if (result.error) {
+            setError(result.error);
+            setGroupComplete(null);
+          } else {
+            setGroupComplete(result.complete ?? false);
+            setError("");
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError("Failed to check group stage completion");
+          setGroupComplete(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingCompletion(false);
+        }
+      }
+    }
+    
+    checkCompletion();
+    
+    return () => { cancelled = true; };
+  }, [divisionId]);
+
+  async function handleAdvanceToPlayoffs() {
+    setIsAdvancing(true);
+    setError("");
+    
+    try {
+      const result = await advanceToPlayoffs(divisionId, tournamentSlug);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        // Success - redirect or update state
+        window.location.href = `/admin/t/${tournamentSlug}/d/${divisionId}/bracket`;
+      }
+    } catch (err) {
+      setError("Failed to advance to playoffs");
+    } finally {
+      setIsAdvancing(false);
+    }
+  }
+
   return (
     <div style={{ padding: "16px 24px 24px" }}>
       <div style={{ fontSize: 14, color: "var(--ink-muted)", marginBottom: 20 }}>
         Groups of {groupSize} teams. Top teams advance to playoffs.
+      </div>
+      
+      {/* Completion Status and Advance Button */}
+      <div style={{
+        padding: "16px",
+        border: "1px solid var(--line-soft)",
+        borderRadius: 8,
+        background: "var(--paper-1)",
+        marginBottom: 24,
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+          Group Stage Status
+        </div>
+        
+        {isCheckingCompletion ? (
+          <div style={{ fontSize: 13, color: "var(--ink-muted)" }}>
+            Checking completion status...
+          </div>
+        ) : groupComplete === true ? (
+          <div>
+            <div style={{ fontSize: 13, color: "var(--green)", marginBottom: 12 }}>
+              <span style={{ fontWeight: 600 }}>Group stage complete!</span> All matches have been played.
+            </div>
+            <button
+              onClick={handleAdvanceToPlayoffs}
+              disabled={isAdvancing}
+              style={{
+                padding: "10px 20px",
+                fontSize: 13,
+                fontFamily: "Poppins, sans-serif",
+                background: isAdvancing ? "var(--line-soft)" : "var(--green)",
+                border: "none",
+                borderRadius: 6,
+                cursor: isAdvancing ? "not-allowed" : "pointer",
+                color: "#fff",
+                fontWeight: 600,
+              }}
+            >
+              {isAdvancing ? "Advancing..." : "Advance to Playoffs"}
+            </button>
+          </div>
+        ) : groupComplete === false ? (
+          <div style={{ fontSize: 13, color: "var(--ink-muted)" }}>
+            <span style={{ fontWeight: 600 }}>Group stage in progress.</span> Complete all matches before advancing to playoffs.
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "var(--ink-muted)" }}>
+            Unable to determine group stage status.
+          </div>
+        )}
+        
+        {error && (
+          <div style={{ fontSize: 12, color: "#c0392b", marginTop: 8 }}>
+            {error}
+          </div>
+        )}
       </div>
       
       {groups.map((group) => (

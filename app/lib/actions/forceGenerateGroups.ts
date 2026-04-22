@@ -36,7 +36,18 @@ export async function forceGenerateGroups(divisionId: string, tournamentSlug: st
   console.log("Cleaning up existing data...");
   await Promise.all([
     Group.deleteMany({ divisionId: divOid }),
-    Match.deleteMany({ divisionId: divOid, isGroupStage: true }),
+    // Historically, some group-stage matches were created without isGroupStage=true,
+    // which leaves behind orphaned duplicates that render as TBD in the scheduler.
+    // Be conservative and delete anything that looks like a group match.
+    Match.deleteMany({
+      divisionId: divOid,
+      $or: [
+        { isGroupStage: true },
+        { phase: "GROUP" },
+        { round: "Group Stage" },
+        { groupId: { $exists: true } },
+      ],
+    }),
     Team.updateMany({ divisionId: divOid }, { $unset: { groupId: 1 } }),
   ]);
 
@@ -51,8 +62,13 @@ export async function forceGenerateGroups(divisionId: string, tournamentSlug: st
     console.log("ERROR: Reset didn't work, teams still have groupIds");
   }
   
+  const groupSize = division.groupPlayoffConfig?.groupSize ?? 4;
+  if (teams.length < groupSize) {
+    throw new Error(`Need at least ${groupSize} teams to create groups`);
+  }
+
   // Create groups
-  const numGroups = Math.ceil(teams.length / 4); // Default to 4 per group
+  const numGroups = Math.ceil(teams.length / groupSize);
   console.log(`Creating ${numGroups} groups...`);
   
   const groups: any[] = [];
@@ -66,52 +82,23 @@ export async function forceGenerateGroups(divisionId: string, tournamentSlug: st
   
   const createdGroups = await Group.insertMany(groups);
   console.log("Created groups:", createdGroups.map(g => ({ name: g.name, id: g._id.toString() })));
-  
-  // Delete all teams and recreate them with group assignments (like the working script)
-  console.log("Deleting and recreating teams with group assignments...");
-  
-  // Store team data before deletion
-  const teamData = teams.map(t => ({
-    player1: t.player1,
-    player2: t.player2,
-    seed: t.seed,
-  }));
-  
-  // Delete all teams
-  await Team.deleteMany({ divisionId: divOid });
-  
-  // Recreate teams with group assignments
-  const teamsToInsert: any[] = [];
-  for (let i = 0; i < teamData.length; i++) {
+
+  // Assign teams to groups
+  console.log("Assigning teams to groups...");
+  for (let i = 0; i < teams.length; i++) {
     const groupIndex = i % numGroups;
     const groupId = createdGroups[groupIndex]._id;
-    
-    console.log(`  Creating ${teamData[i].player1} / ${teamData[i].player2} -> Group ${createdGroups[groupIndex].name} (${groupId.toString()})`);
-    
-    teamsToInsert.push({
-      divisionId: divOid,
-      player1: teamData[i].player1,
-      player2: teamData[i].player2,
-      seed: teamData[i].seed,
-      groupId: new mongoose.Types.ObjectId(groupId.toString()),
-    });
+    const teamId = teams[i]._id;
+
+    console.log(
+      `  ${teams[i].player1} / ${teams[i].player2} -> Group ${createdGroups[groupIndex].name} (${groupId.toString()})`
+    );
+
+    await Team.findByIdAndUpdate(teamId, { groupId });
   }
-  
-  // Insert teams one by one to ensure groupId is saved
-  for (const teamData of teamsToInsert) {
-    await Team.create(teamData);
-  }
-  
-  // Fetch the recreated teams
+
   const updatedTeams = await Team.find({ divisionId: divOid }).sort({ seed: 1 }).lean();
-  console.log(`Recreated ${updatedTeams.length} teams with groupIds`);
-  
-  // Verify the assignments
-  console.log("Team assignments after recreation:");
-  for (let i = 0; i < updatedTeams.length; i++) {
-    const team = updatedTeams[i];
-    console.log(`  ${i+1}. ${team.player1} / ${team.player2} -> groupId: ${team.groupId?.toString() || 'none'}`);
-  }
+  console.log(`Assigned ${updatedTeams.filter(t => t.groupId).length} teams to groups`);
   
   // Check group matching
   console.log("Group matching verification:");
@@ -141,6 +128,7 @@ export async function forceGenerateGroups(divisionId: string, tournamentSlug: st
           team2Id: groupTeams[j]._id,
           round: "Group Stage",
           isGroupStage: true,
+          phase: "GROUP",
           bracketSlot: null,
           sets: [],
         });

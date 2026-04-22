@@ -59,7 +59,7 @@ function sortForDrawer(a: MatchRow, b: MatchRow): number {
 function matchLabel(m: MatchRow): string {
   const t1 = m.team1 ?? "TBD";
   const t2 = m.team2 ?? "TBD";
-  return `${t1} vs ${t2}`;
+  return `${t1}\nvs\n${t2}`;
 }
 
 function matchSubLabel(m: MatchRow): string {
@@ -81,15 +81,14 @@ function MatchChip({
       onClick={() => onClick(match)}
       style={{
         position: "absolute",
-        inset: 3,
+        inset: 2,
         background: "var(--green)",
         borderRadius: 5,
-        padding: "4px 7px",
+        padding: "3px 6px",
         cursor: "pointer",
         display: "flex",
         flexDirection: "column",
         justifyContent: "center",
-        gap: 2,
         overflow: "hidden",
       }}
     >
@@ -98,20 +97,29 @@ function MatchChip({
           fontSize: 11,
           fontWeight: 600,
           color: "var(--paper)",
-          whiteSpace: "nowrap",
+          lineHeight: 1.3,
+          whiteSpace: "pre-line",
           overflow: "hidden",
-          textOverflow: "ellipsis",
+          display: "-webkit-box",
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: "vertical",
+          textAlign: "center",
         }}
       >
         {matchLabel(match)}
       </div>
       <div
         style={{
-          fontSize: 10,
+          position: "absolute",
+          bottom: 3,
+          right: 6,
+          fontSize: 9,
           color: "rgba(250,247,242,0.7)",
+          lineHeight: 1.2,
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
+          textAlign: "right",
         }}
       >
         {matchSubLabel(match)}
@@ -122,7 +130,7 @@ function MatchChip({
 
 // ─── Grid ────────────────────────────────────────────────────────────────────
 
-const ROW_H = 72;
+const ROW_H = 108;
 const TIME_COL_W = 56;
 const COURT_COL_W = 180;
 
@@ -132,12 +140,16 @@ function ScheduleGridDay({
   matches,
   onCellClick,
   onMatchClick,
+  onEditCourts,
+  onEditDaySchedules,
 }: {
   day: DayRow;
   courts: CourtRow[];
   matches: MatchRow[];
   onCellClick: (courtId: string, slot: string, day: DayRow) => void;
   onMatchClick: (m: MatchRow) => void;
+  onEditCourts: () => void;
+  onEditDaySchedules: () => void;
 }) {
   const activeCourts = courtsForDay(day, courts);
   const slots = slotsForDay(day);
@@ -172,7 +184,32 @@ function ScheduleGridDay({
             gridTemplateColumns: `${TIME_COL_W}px ${activeCourts.map(() => `${COURT_COL_W}px`).join(" ")}`,
           }}
         >
-          <div style={{ borderRight: "1px solid var(--paper-2)" }} />
+          <div style={{ 
+            borderRight: "1px solid var(--paper-2)",
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center"
+          }}>
+            <button
+              onClick={onEditCourts}
+              style={{
+                padding: "6px 10px",
+                fontSize: 11,
+                fontFamily: "Poppins, sans-serif",
+                background: "var(--paper-2)",
+                border: "1px solid var(--paper-3)",
+                borderRadius: 4,
+                cursor: "pointer",
+                color: "var(--ink-muted)",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+              }}
+              title="Edit Courts"
+            >
+              Edit
+            </button>
+          </div>
           {activeCourts.map((c) => (
             <div
               key={c.id}
@@ -253,6 +290,7 @@ function ScheduleGridDay({
 function AssignDrawer({
   mode,
   match,
+  allMatches,
   unscheduledMatches,
   divisions,
   courtId,
@@ -263,6 +301,7 @@ function AssignDrawer({
 }: {
   mode: "assign" | "detail";
   match: MatchRow | null;
+  allMatches: MatchRow[];
   unscheduledMatches: MatchRow[];
   divisions: DivisionRow[];
   courtId: string | null;
@@ -401,12 +440,33 @@ function AssignDrawer({
                   border: "1.5px solid var(--green)",
                   borderRadius: 8,
                   background: "var(--green-tint)",
+                  position: "relative",
                 }}
               >
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>
+                <div style={{ 
+                  fontSize: 14, 
+                  fontWeight: 600, 
+                  color: "var(--ink)",
+                  whiteSpace: "pre-line",
+                  lineHeight: 1.3,
+                  textAlign: "center",
+                }}>
                   {matchLabel(match)}
                 </div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                <div 
+                  className="muted" 
+                  style={{ 
+                    position: "absolute",
+                    bottom: 8,
+                    right: 16,
+                    fontSize: 10,
+                    lineHeight: 1.2,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    textAlign: "right",
+                  }}
+                >
                   {matchSubLabel(match)}
                 </div>
               </div>
@@ -478,10 +538,40 @@ function AssignDrawer({
                       const filtered = unscheduledMatches
                         .filter((m) => m.divisionId === divisionFilterId)
                         .sort(sortForDrawer);
+                      const activeDivision = divisions.find((d) => d.id === divisionFilterId);
+                      const divisionHasAnyMatches = allMatches.some((m) => m.divisionId === divisionFilterId);
+                      if (filtered.length === 0 && activeDivision && !divisionHasAnyMatches) {
+                        const isGroup = activeDivision.format === "GROUP_PLAYOFF";
+                        const bracketUrl = `/admin/t/${activeDivision.slug}/d/${activeDivision.id}/${isGroup ? "groups" : "bracket"}`;
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            <div className="muted" style={{ fontSize: 13 }}>
+                              {isGroup ? "Groups have" : "The bracket has"} not been generated for this division yet.
+                            </div>
+                            <a
+                              href={bracketUrl}
+                              style={{
+                                display: "inline-block",
+                                padding: "8px 16px",
+                                fontSize: 13,
+                                fontFamily: "Poppins, sans-serif",
+                                fontWeight: 600,
+                                background: "var(--green)",
+                                color: "#fff",
+                                borderRadius: 6,
+                                textDecoration: "none",
+                                textAlign: "center",
+                              }}
+                            >
+                              {isGroup ? "Generate Groups" : "Generate Bracket"} →
+                            </a>
+                          </div>
+                        );
+                      }
                       if (filtered.length === 0) {
                         return (
                           <div className="muted" style={{ fontSize: 13 }}>
-                            No unscheduled matches in this division.
+                            All matches in this division are scheduled.
                           </div>
                         );
                       }
@@ -492,18 +582,47 @@ function AssignDrawer({
                               key={m.id}
                               onClick={() => setSelectedMatchId(m.id)}
                               style={{
-                                padding: "10px 14px",
                                 border: `1.5px solid ${selectedMatchId === m.id ? "var(--green)" : "var(--line-soft)"}`,
                                 borderRadius: 7,
                                 cursor: "pointer",
                                 background: selectedMatchId === m.id ? "var(--green-tint)" : "var(--paper)",
                                 transition: "border-color 120ms, background 120ms",
+                                overflow: "hidden",
+                                position: "relative",
                               }}
                             >
-                              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--ink)" }}>
-                                {matchLabel(m)}
-                              </div>
-                              <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
+                              {[m.team1, m.team2].map((team, idx) => {
+                                const players = (team ?? "TBD").split(" / ");
+                                return (
+                                  <div
+                                    key={idx}
+                                    style={{
+                                      padding: idx === 1 ? "10px 14px 20px" : "10px 14px",
+                                      borderBottom: idx === 0 ? `1px solid ${selectedMatchId === m.id ? "rgba(31,77,58,.15)" : "var(--paper-2)"}` : undefined,
+                                      display: "flex",
+                                      flexDirection: "column",
+                                      gap: 2,
+                                    }}
+                                  >
+                                    {players.map((p, pi) => (
+                                      <span key={pi} style={{ fontSize: 13, color: "var(--ink)", lineHeight: 1.3 }}>
+                                        {p}
+                                      </span>
+                                    ))}
+                                  </div>
+                                );
+                              })}
+                              <div
+                                className="muted"
+                                style={{
+                                  position: "absolute",
+                                  bottom: 5,
+                                  right: 14,
+                                  fontSize: 11,
+                                  lineHeight: 1.2,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
                                 {matchSubLabel(m)}
                               </div>
                             </div>
@@ -670,12 +789,16 @@ export function ScheduleGrid({
   matches,
   divisions,
   tournamentSlug,
+  onEditCourts,
+  onEditDaySchedules,
 }: {
   courts: CourtRow[];
   days: DayRow[];
   matches: MatchRow[];
   divisions: DivisionRow[];
   tournamentSlug: string;
+  onEditCourts: () => void;
+  onEditDaySchedules: () => void;
 }) {
   const [activeDayId, setActiveDayId] = useState<string>(days[0]?.id ?? "");
   const [drawer, setDrawer] = useState<DrawerState>({ kind: "closed" });
@@ -716,21 +839,41 @@ export function ScheduleGrid({
           padding: "0 20px",
           gap: 4,
           flexShrink: 0,
+          alignItems: "center",
+          justifyContent: "space-between",
         }}
       >
-        {days.map((d) => {
-          const active = d.id === activeDayId;
-          return (
-            <button
-              key={d.id}
-              onClick={() => setActiveDayId(d.id)}
-              className={active ? "wf-tab wf-tab-active" : "wf-tab"}
-              style={{ background: "none", border: "none", cursor: "pointer" }}
-            >
-              {fmtDate(d.date)}
-            </button>
-          );
-        })}
+        <div style={{ display: "flex", gap: 4 }}>
+          {days.map((d) => {
+            const active = d.id === activeDayId;
+            return (
+              <button
+                key={d.id}
+                onClick={() => setActiveDayId(d.id)}
+                className={active ? "wf-tab wf-tab-active" : "wf-tab"}
+                style={{ background: "none", border: "none", cursor: "pointer" }}
+              >
+                {fmtDate(d.date)}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          onClick={onEditDaySchedules}
+          style={{
+            padding: "8px 16px",
+            fontSize: 13,
+            fontFamily: "Poppins, sans-serif",
+            background: "var(--green)",
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+            color: "#fff",
+            fontWeight: 500,
+          }}
+        >
+          Edit Day Schedules
+        </button>
       </div>
 
       {/* Grid for active day */}
@@ -741,6 +884,8 @@ export function ScheduleGrid({
           matches={matches}
           onCellClick={handleCellClick}
           onMatchClick={handleMatchClick}
+          onEditCourts={onEditCourts}
+          onEditDaySchedules={onEditDaySchedules}
         />
       )}
 
@@ -752,6 +897,7 @@ export function ScheduleGrid({
         <AssignDrawer
           mode={drawer.kind === "detail" ? "detail" : "assign"}
           match={drawer.kind === "detail" ? drawer.match : null}
+          allMatches={matches}
           unscheduledMatches={unscheduled}
           divisions={divisions}
           courtId={drawer.kind === "assign" ? drawer.courtId : drawer.match.courtId}

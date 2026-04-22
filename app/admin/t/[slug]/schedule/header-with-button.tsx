@@ -40,22 +40,6 @@ export default function HeaderWithButton({
             {matches.filter((m) => m.scheduledTime).length}/{matches.length} scheduled
           </div>
         </div>
-        <button
-          onClick={onEditCourts}
-          style={{
-            padding: "8px 16px",
-            fontSize: 13,
-            fontFamily: "Poppins, sans-serif",
-            background: "var(--paper-2)",
-            border: "1px solid var(--paper-3)",
-            borderRadius: 6,
-            cursor: "pointer",
-            color: "var(--ink)",
-            fontWeight: 500,
-          }}
-        >
-          Edit Courts
-        </button>
       </div>
     </div>
   );
