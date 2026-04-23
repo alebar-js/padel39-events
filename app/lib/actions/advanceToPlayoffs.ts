@@ -4,7 +4,7 @@ import { connectDB } from "../db";
 import { Division } from "../models/Division";
 import { Team } from "../models/Team";
 import { Group } from "../models/Group";
-import { Match } from "../models/Match";
+import { Match, type IMatch } from "../models/Match";
 import { revalidatePath } from "next/cache";
 import mongoose from "mongoose";
 
@@ -17,8 +17,40 @@ interface GroupStanding {
     wins: number;
     losses: number;
     points: number; // For future tie-breaker implementation
+    setsFor?: number;
+    setsAgainst?: number;
     position: number;
   }[];
+}
+
+interface IncompleteMatch {
+  id: string;
+  groupId: string | null;
+  round: string;
+}
+
+interface QualifiedTeam {
+  teamId: string;
+  seed: number;
+  source: string;
+}
+
+type PlayoffMatchDoc = Pick<
+  IMatch,
+  "divisionId" | "round" | "bracketSlot" | "team1Id" | "team2Id" | "phase" | "isGroupStage" | "isConsolation" | "sets"
+>;
+
+function compareQualifiedTeams(
+  a: GroupStanding["teams"][number],
+  b: GroupStanding["teams"][number]
+): number {
+  if (b.wins !== a.wins) return b.wins - a.wins;
+
+  const aDiff = (a.setsFor ?? 0) - (a.setsAgainst ?? 0);
+  const bDiff = (b.setsFor ?? 0) - (b.setsAgainst ?? 0);
+  if (bDiff !== aDiff) return bDiff - aDiff;
+
+  return a.teamName.localeCompare(b.teamName);
 }
 
 export async function getGroupStandings(divisionId: string): Promise<{ error?: string; standings?: GroupStanding[] }> {
@@ -122,7 +154,7 @@ export async function getGroupStandings(divisionId: string): Promise<{ error?: s
   return { standings };
 }
 
-export async function isGroupStageComplete(divisionId: string): Promise<{ error?: string; complete?: boolean; incompleteMatches?: any[]; alreadyAdvanced?: boolean }> {
+export async function isGroupStageComplete(divisionId: string): Promise<{ error?: string; complete?: boolean; incompleteMatches?: IncompleteMatch[]; alreadyAdvanced?: boolean }> {
   await connectDB();
   const divOid = new mongoose.Types.ObjectId(divisionId);
 
@@ -178,37 +210,36 @@ export async function generatePlayoffBracket(divisionId: string, tournamentSlug:
 
 
   // Collect qualified teams
-  const qualifiedTeams: any[] = [];
+  const qualifiedTeams: QualifiedTeam[] = [];
   
   if (qualifyingMode === "AUTO") {
-    // Take top teams from each group, plus best runners-up if needed
-    const teamsPerGroup = Math.floor(playoffSize / standings.length);
-    const remainingSlots = playoffSize % standings.length;
+    // Fill playoff spots by finishing position across groups:
+    // all 1st-place teams first, then the best 2nd-place teams, then 3rd-place, etc.
+    // This keeps each team eligible exactly once.
+    const seenTeamIds = new Set<string>();
+    const maxGroupSize = standings.reduce((max, standing) => Math.max(max, standing.teams.length), 0);
 
-    for (const standing of standings) {
-      // Take top teams from this group
-      for (let i = 0; i < Math.min(teamsPerGroup, standing.teams.length); i++) {
+    for (let positionIndex = 0; positionIndex < maxGroupSize && qualifiedTeams.length < playoffSize; positionIndex++) {
+      const candidates = standings
+        .map((standing) => ({
+          standing,
+          team: standing.teams[positionIndex],
+        }))
+        .filter(
+          (
+            entry
+          ): entry is { standing: GroupStanding; team: GroupStanding["teams"][number] } =>
+            Boolean(entry.team) && !seenTeamIds.has(entry.team.teamId)
+        )
+        .sort((a, b) => compareQualifiedTeams(a.team, b.team));
+
+      for (const { standing, team } of candidates) {
+        if (qualifiedTeams.length >= playoffSize) break;
+        seenTeamIds.add(team.teamId);
         qualifiedTeams.push({
-          teamId: standing.teams[i].teamId,
+          teamId: team.teamId,
           seed: qualifiedTeams.length + 1,
-          source: `${standing.groupName}${standing.teams[i].position}`,
-        });
-      }
-    }
-
-    // Fill remaining slots with best runners-up
-    if (remainingSlots > 0) {
-      const runnersUp = standings
-        .map(s => s.teams[1]) // Second place teams
-        .filter(t => t)
-        .sort((a, b) => b.wins - a.wins)
-        .slice(0, remainingSlots);
-
-      for (const runnerUp of runnersUp) {
-        qualifiedTeams.push({
-          teamId: runnerUp.teamId,
-          seed: qualifiedTeams.length + 1,
-          source: "Runner-up",
+          source: `${standing.groupName}${team.position}`,
         });
       }
     }
@@ -236,13 +267,12 @@ export async function generatePlayoffBracket(divisionId: string, tournamentSlug:
 }
 
 // Helper function to generate bracket from specific teams
-async function generateBracketFromTeams(qualifiedTeams: any[], divisionId: mongoose.Types.ObjectId): Promise<{ error?: string }> {
+async function generateBracketFromTeams(qualifiedTeams: QualifiedTeam[], divisionId: mongoose.Types.ObjectId): Promise<{ error?: string }> {
   const teamCount = qualifiedTeams.length;
   const size = Math.pow(2, Math.ceil(Math.log2(teamCount)));
-  const byes = size - teamCount;
 
   // Create bracket slots using standard single-elimination logic
-  const docs: any[] = [];
+  const docs: PlayoffMatchDoc[] = [];
   
   // Standard bracket seeding order
   function seedOrder(size: number): number[] {

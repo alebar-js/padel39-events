@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import mongoose from "mongoose";
 import { connectDB } from "@/app/lib/db";
 import { Tournament } from "@/app/lib/models/Tournament";
 import { Division } from "@/app/lib/models/Division";
@@ -109,29 +108,12 @@ export default async function TournamentDetailPage({
               </Link>
               {activeDivision ? (
                 activeDivision.format === "GROUP_PLAYOFF" ? (
-                  activeDivision.groupPlayoffState === "PLAYOFF_STAGE" ? (
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <Link
-                        href={`/admin/t/${slug}/d/${activeDivision._id}/groups`}
-                        style={{ textDecoration: "none" }}
-                      >
-                        <Btn small>Group Results</Btn>
-                      </Link>
-                      <Link
-                        href={`/admin/t/${slug}/d/${activeDivision._id}/bracket`}
-                        style={{ textDecoration: "none" }}
-                      >
-                        <Btn small primary>Playoffs</Btn>
-                      </Link>
-                    </div>
-                  ) : (
-                    <Link
-                      href={`/admin/t/${slug}/d/${activeDivision._id}/groups`}
-                      style={{ textDecoration: "none" }}
-                    >
-                      <Btn small primary>Group Stage</Btn>
-                    </Link>
-                  )
+                  <Link
+                    href={`/admin/t/${slug}/d/${activeDivision._id}`}
+                    style={{ textDecoration: "none" }}
+                  >
+                    <Btn small primary>View Division</Btn>
+                  </Link>
                 ) : (
                   <Link
                     href={`/admin/t/${slug}/d/${activeDivision._id}/bracket`}
