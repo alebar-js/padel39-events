@@ -32,22 +32,11 @@ export async function forceGenerateGroups(divisionId: string, tournamentSlug: st
 
   console.log(`Force generating groups for division: ${division.name}`);
 
-  // Clean up everything FIRST
+  // Clean up everything FIRST (full reset — delete all matches for this division)
   console.log("Cleaning up existing data...");
   await Promise.all([
     Group.deleteMany({ divisionId: divOid }),
-    // Historically, some group-stage matches were created without isGroupStage=true,
-    // which leaves behind orphaned duplicates that render as TBD in the scheduler.
-    // Be conservative and delete anything that looks like a group match.
-    Match.deleteMany({
-      divisionId: divOid,
-      $or: [
-        { isGroupStage: true },
-        { phase: "GROUP" },
-        { round: "Group Stage" },
-        { groupId: { $exists: true } },
-      ],
-    }),
+    Match.deleteMany({ divisionId: divOid }),
     Team.updateMany({ divisionId: divOid }, { $unset: { groupId: 1 } }),
   ]);
 
@@ -141,12 +130,10 @@ export async function forceGenerateGroups(divisionId: string, tournamentSlug: st
     console.log(`Created ${matches.length} matches`);
   }
   
-  // Update division state
-  if (!division.groupPlayoffState || division.groupPlayoffState !== "GROUP_STAGE") {
-    await Division.findByIdAndUpdate(divOid, {
-      groupPlayoffState: "GROUP_STAGE",
-    });
-  }
+  // Reset division state unconditionally (covers re-generation after a previous playoff advance)
+  await Division.findByIdAndUpdate(divOid, {
+    groupPlayoffState: "GROUP_STAGE",
+  });
   
   console.log("Force generate groups completed successfully!");
   

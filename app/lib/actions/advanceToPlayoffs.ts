@@ -122,7 +122,7 @@ export async function getGroupStandings(divisionId: string): Promise<{ error?: s
   return { standings };
 }
 
-export async function isGroupStageComplete(divisionId: string): Promise<{ error?: string; complete?: boolean; incompleteMatches?: any[] }> {
+export async function isGroupStageComplete(divisionId: string): Promise<{ error?: string; complete?: boolean; incompleteMatches?: any[]; alreadyAdvanced?: boolean }> {
   await connectDB();
   const divOid = new mongoose.Types.ObjectId(divisionId);
 
@@ -135,15 +135,21 @@ export async function isGroupStageComplete(divisionId: string): Promise<{ error?
     return { error: "Division must be GROUP_PLAYOFF format" };
   }
 
+  // If division has already advanced, the group stage is complete but we should indicate this
+  if (division.groupPlayoffState === "PLAYOFF_STAGE") {
+    return { complete: true, alreadyAdvanced: true };
+  }
+
   const incompleteMatches = matches.filter(m => !m.winnerId);
 
   return {
     complete: matches.length > 0 && incompleteMatches.length === 0,
     incompleteMatches: incompleteMatches.map(m => ({
-      id: m._id,
-      groupId: m.groupId,
+      id: m._id.toString(),
+      groupId: m.groupId?.toString() ?? null,
       round: m.round,
     })),
+    alreadyAdvanced: false,
   };
 }
 

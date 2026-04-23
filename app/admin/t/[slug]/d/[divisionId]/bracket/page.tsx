@@ -9,6 +9,7 @@ import { Match } from "@/app/lib/models/Match";
 import { SidebarNav } from "@/app/components/chrome";
 import { generateBracket } from "@/app/lib/actions/generateBracket";
 import { generatePlayoffBracket } from "@/app/lib/actions/advanceToPlayoffs";
+import { serialize } from "@/app/lib/serialize";
 import { BracketView } from "./client";
 
 type Params = Promise<{ slug: string; divisionId: string }>;
@@ -67,13 +68,12 @@ export default async function BracketPage({ params }: { params: Params }) {
   const mainRows: MatchRow[] = allRows.filter((m) => !m.isConsolation).map(({ isConsolation: _c, ...r }) => r);
   const backRows: MatchRow[] = allRows.filter((m) => m.isConsolation).map(({ isConsolation: _c, ...r }) => r);
 
-  // Ensure all data is serializable plain objects
-  const serializableMainRows = JSON.parse(JSON.stringify(mainRows));
-  const serializableBackRows = JSON.parse(JSON.stringify(backRows));
-  const serializableTeamMap = JSON.parse(JSON.stringify(teamMap));
-  const serializableTournament = JSON.parse(JSON.stringify(tournament));
-  const serializableDivision = JSON.parse(JSON.stringify(division));
-  const serializableTeams = JSON.parse(JSON.stringify(teams));
+  const serializableMainRows = serialize(mainRows);
+  const serializableBackRows = serialize(backRows);
+  const serializableTeamMap = serialize(teamMap);
+  const serializableTournament = serialize(tournament);
+  const serializableDivision = serialize(division);
+  const serializableTeams = serialize(teams);
 
   const hasBracket = mainRows.length > 0;
 

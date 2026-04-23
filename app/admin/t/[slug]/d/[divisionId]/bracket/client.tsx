@@ -2,7 +2,18 @@
 
 import { Fragment, useState, useEffect, useCallback } from "react";
 import { recordScore } from "@/app/lib/actions/recordScore";
+import { swapBracketTeams } from "@/app/lib/actions/swapBracketTeams";
 import type { MatchRow, TeamMap, MatchFormat, SetScore } from "./page";
+
+type BracketPosition = 1 | 2;
+
+type SwapTarget = {
+  matchId: string;
+  bracketSlot: number;
+  round: string;
+  position: BracketPosition;
+  teamId: string | null;
+};
 
 // ─── Bracket layout helpers ───────────────────────────────────────────────────
 
@@ -83,13 +94,19 @@ function MatchCard({
   teamMap,
   top,
   matchFormat,
-  onClick,
+  swapMode,
+  selectedSwapTarget,
+  onSelectMatch,
+  onSelectSwapTarget,
 }: {
   match: MatchRow;
   teamMap: TeamMap;
   top: number;
   matchFormat: MatchFormat;
-  onClick: (m: MatchRow) => void;
+  swapMode: boolean;
+  selectedSwapTarget: SwapTarget | null;
+  onSelectMatch: (m: MatchRow) => void;
+  onSelectSwapTarget: (target: SwapTarget) => void;
 }) {
   const t1 = match.team1Id ? teamMap[match.team1Id] ?? "Unknown" : null;
   const t2 = match.team2Id ? teamMap[match.team2Id] ?? "Unknown" : null;
@@ -101,7 +118,6 @@ function MatchCard({
   return (
     <div style={{ position: "absolute", top, left: 0, width: CARD_W }}>
       <div
-        onClick={() => !isEmpty && onClick(match)}
         style={{
           width: CARD_W,
           height: CARD_H,
@@ -116,40 +132,65 @@ function MatchCard({
         }}
       >
         {[
-          { name: t1, id: match.team1Id, team: 1 as const },
-          { name: t2, id: match.team2Id, team: 2 as const },
-        ].map(({ name, id, team }, idx) => (
-          <div
-            key={idx}
-            style={{
-              height: "50%",
-              display: "flex",
-              alignItems: "center",
-              padding: "0 10px",
-              borderBottom: idx === 0 ? "1px solid var(--paper-2)" : undefined,
-              background: w && w === id ? "rgba(31,77,58,.08)" : undefined,
-              fontSize: 13,
-              fontWeight: w && w === id ? 600 : 400,
-              color: name ? "var(--ink)" : "var(--ink-muted)",
-              gap: 6,
-            }}
-          >
-            {w && w === id && (
-              <span style={{ color: "var(--green)", fontSize: 11, alignSelf: "center" }}>✓</span>
-            )}
-            <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
-              {name
-                ? name.split(" / ").map((player, pi) => (
-                    <span key={pi} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13 }}>
-                      {player}
-                    </span>
-                  ))
-                : <span style={{ fontSize: 13 }}>{isTbd ? "TBD" : ""}</span>
-              }
+          { name: t1, id: match.team1Id, team: 1 as const, position: 1 as const },
+          { name: t2, id: match.team2Id, team: 2 as const, position: 2 as const },
+        ].map(({ name, id, team, position }, idx) => {
+          const isSelected =
+            selectedSwapTarget?.matchId === match.id && selectedSwapTarget.position === position;
+          const canClick = !isEmpty;
+          return (
+            <div
+              key={idx}
+              onClick={() => {
+                if (!canClick) return;
+                if (swapMode) {
+                  onSelectSwapTarget({
+                    matchId: match.id,
+                    bracketSlot: match.bracketSlot,
+                    round: match.round,
+                    position,
+                    teamId: id ?? null,
+                  });
+                } else {
+                  onSelectMatch(match);
+                }
+              }}
+              style={{
+                height: "50%",
+                display: "flex",
+                alignItems: "center",
+                padding: "0 10px",
+                borderBottom: idx === 0 ? "1px solid var(--paper-2)" : undefined,
+                background: isSelected
+                  ? "rgba(31,77,58,.14)"
+                  : w && w === id
+                    ? "rgba(31,77,58,.08)"
+                    : undefined,
+                fontSize: 13,
+                fontWeight: w && w === id ? 600 : 400,
+                color: name ? "var(--ink)" : "var(--ink-muted)",
+                gap: 6,
+                cursor: canClick ? "pointer" : "default",
+                boxShadow: isSelected ? "inset 0 0 0 1.5px var(--green)" : undefined,
+              }}
+            >
+              {w && w === id && (
+                <span style={{ color: "var(--green)", fontSize: 11, alignSelf: "center" }}>✓</span>
+              )}
+              <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", gap: 1 }}>
+                {name
+                  ? name.split(" / ").map((player, pi) => (
+                      <span key={pi} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13 }}>
+                        {player}
+                      </span>
+                    ))
+                  : <span style={{ fontSize: 13 }}>{isTbd ? "TBD" : ""}</span>
+                }
+              </div>
+              {!isEmpty && <SetBoxes sets={match.sets} team={team} maxSets={maxSets} />}
             </div>
-            {!isEmpty && <SetBoxes sets={match.sets} team={team} maxSets={maxSets} />}
-          </div>
-        ))}
+          );
+        })}
       </div>
       {!isEmpty && match.scheduledTime && (
         <div
@@ -439,12 +480,18 @@ function BracketTree({
   matches,
   teamMap,
   matchFormat,
-  onSelect,
+  swapMode,
+  selectedSwapTarget,
+  onSelectMatch,
+  onSelectSwapTarget,
 }: {
   matches: MatchRow[];
   teamMap: TeamMap;
   matchFormat: MatchFormat;
-  onSelect: (m: MatchRow) => void;
+  swapMode: boolean;
+  selectedSwapTarget: SwapTarget | null;
+  onSelectMatch: (m: MatchRow) => void;
+  onSelectSwapTarget: (target: SwapTarget) => void;
 }) {
   const size = bracketSize(matches);
   const rounds = groupByRound(matches, size);
@@ -495,7 +542,10 @@ function BracketTree({
                     teamMap={teamMap}
                     top={yBySlot.get(m.bracketSlot) ?? 0}
                     matchFormat={matchFormat}
-                    onClick={onSelect}
+                    swapMode={swapMode}
+                    selectedSwapTarget={selectedSwapTarget}
+                    onSelectMatch={onSelectMatch}
+                    onSelectSwapTarget={onSelectSwapTarget}
                   />
                 ))}
               </div>
@@ -596,46 +646,161 @@ export function BracketView({
   matchFormat: MatchFormat;
 }) {
   const [selected, setSelected] = useState<MatchRow | null>(null);
+  const [swapMode, setSwapMode] = useState(false);
+  const [swapSelection, setSwapSelection] = useState<SwapTarget | null>(null);
+  const [swapError, setSwapError] = useState("");
+  const [swapping, setSwapping] = useState(false);
   const [tab, setTab] = useState<"main" | "back">("main");
 
   const allMatches = [...matches, ...backMatches];
   const currentSelected = selected ? allMatches.find((m) => m.id === selected.id) ?? null : null;
   const hasBackDraw = backMatches.length > 0;
+  const visibleMatches = tab === "main" || !hasBackDraw ? matches : backMatches;
+  const visibleTeamCount = new Set(
+    visibleMatches.flatMap((match) => [match.team1Id, match.team2Id].filter((teamId): teamId is string => !!teamId))
+  ).size;
+  const swapEligibleSlotCount = visibleMatches.filter((match) => match.team1Id || match.team2Id).length * 2;
+
+  function describeSwapTarget(target: SwapTarget | null): string {
+    if (!target) return "None selected";
+    const teamName = target.teamId ? (teamMap[target.teamId] ?? "Unknown team") : "TBD";
+    return `${teamName} · ${target.round} slot ${target.bracketSlot} · ${target.position === 1 ? "Top" : "Bottom"}`;
+  }
+
+  async function handleSwapTargetSelect(target: SwapTarget) {
+    if (!swapMode || swapping) return;
+
+    setSwapError("");
+
+    if (
+      swapSelection &&
+      swapSelection.matchId === target.matchId &&
+      swapSelection.position === target.position
+    ) {
+      setSwapSelection(null);
+      return;
+    }
+
+    if (!swapSelection) {
+      setSwapSelection(target);
+      return;
+    }
+
+    setSwapping(true);
+    const result = await swapBracketTeams({
+      divisionId,
+      tournamentSlug,
+      isConsolation: tab === "back" && hasBackDraw,
+      sourceMatchId: swapSelection.matchId,
+      sourcePosition: swapSelection.position,
+      targetMatchId: target.matchId,
+      targetPosition: target.position,
+    });
+    setSwapping(false);
+
+    if (result?.error) {
+      setSwapError(result.error);
+      return;
+    }
+
+    setSwapSelection(null);
+  }
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      {hasBackDraw && (
-        <div style={{ display: "flex", gap: 4, padding: "12px 32px 0", borderBottom: "1px solid var(--paper-2)" }}>
-          {(["main", "back"] as const).map((t) => (
+      {(hasBackDraw || visibleTeamCount >= 1) && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 32px 0", borderBottom: "1px solid var(--paper-2)" }}>
+          <div style={{ display: "flex", gap: 4 }}>
+            {hasBackDraw && (["main", "back"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => {
+                  setTab(t);
+                  setSelected(null);
+                  setSwapSelection(null);
+                  setSwapError("");
+                }}
+                style={{
+                  padding: "7px 16px",
+                  fontSize: 13,
+                  fontFamily: "Poppins, sans-serif",
+                  fontWeight: tab === t ? 600 : 400,
+                  background: "none",
+                  border: "none",
+                  borderBottom: `2px solid ${tab === t ? "var(--green)" : "transparent"}`,
+                  borderRadius: 0,
+                  cursor: "pointer",
+                  color: tab === t ? "var(--ink)" : "var(--ink-muted)",
+                  marginBottom: -1,
+                }}
+              >
+                {t === "main" ? "Main Draw" : "Back Draw"}
+              </button>
+            ))}
+          </div>
+          {swapEligibleSlotCount >= 2 && (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              onClick={() => {
+                setSelected(null);
+                const nextSwapMode = !swapMode;
+                setSwapMode(nextSwapMode);
+                if (!nextSwapMode) {
+                  setSwapSelection(null);
+                  setSwapError("");
+                }
+              }}
               style={{
-                padding: "7px 16px",
+                marginBottom: 12,
+                padding: "6px 14px",
                 fontSize: 13,
                 fontFamily: "Poppins, sans-serif",
-                fontWeight: tab === t ? 600 : 400,
-                background: "none",
-                border: "none",
-                borderBottom: `2px solid ${tab === t ? "var(--green)" : "transparent"}`,
-                borderRadius: 0,
+                background: swapMode ? "rgba(31,77,58,.08)" : "none",
+                border: `1px solid ${swapMode ? "var(--green)" : "var(--line-soft)"}`,
+                borderRadius: 6,
                 cursor: "pointer",
-                color: tab === t ? "var(--ink)" : "var(--ink-muted)",
-                marginBottom: -1,
+                color: swapMode ? "var(--green)" : "var(--ink-muted)",
               }}
             >
-              {t === "main" ? "Main Draw" : "Back Draw"}
+              {swapMode ? "Exit Swap Mode" : "Swap Teams"}
             </button>
-          ))}
+          )}
+        </div>
+      )}
+
+      {swapMode && (
+        <div style={{
+          padding: "12px 32px",
+          borderBottom: "1px solid var(--paper-2)",
+          background: "linear-gradient(180deg, rgba(31,77,58,.05), rgba(31,77,58,0))",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+        }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div style={{ fontSize: 13, color: "var(--ink)" }}>
+              Click one bracket side, then click another side to swap. `TBD` is allowed.
+            </div>
+            <div className="muted" style={{ fontSize: 12 }}>
+              Selected: {describeSwapTarget(swapSelection)}
+            </div>
+            {swapError && <div style={{ fontSize: 12, color: "#c0392b" }}>{swapError}</div>}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--ink-muted)", whiteSpace: "nowrap" }}>
+            {swapping ? "Swapping…" : "Scores lock swaps"}
+          </div>
         </div>
       )}
 
       <div style={{ flex: 1, overflow: "auto", padding: "24px 32px" }}>
         <BracketTree
-          matches={tab === "main" || !hasBackDraw ? matches : backMatches}
+          matches={visibleMatches}
           teamMap={teamMap}
           matchFormat={matchFormat}
-          onSelect={setSelected}
+          swapMode={swapMode}
+          selectedSwapTarget={swapSelection}
+          onSelectMatch={setSelected}
+          onSelectSwapTarget={handleSwapTargetSelect}
         />
       </div>
 

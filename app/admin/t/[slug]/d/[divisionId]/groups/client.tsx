@@ -332,6 +332,13 @@ function calculateGroupStandings(teams: string[], matches: MatchRow[], teamMap: 
   return sortedStandings;
 }
 
+function formatSchedule(scheduledTime: string): { date: string; time: string } {
+  const d = new Date(scheduledTime);
+  const date = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
+  const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "UTC" }).toLowerCase();
+  return { date, time };
+}
+
 // Match cell component for matrix
 function MatchCell({
   match,
@@ -355,12 +362,14 @@ function MatchCell({
     match.sets.length > 0 &&
     match.sets.some((s) => s.team1 > 0 || s.team2 > 0);
 
+  const schedule = match?.scheduledTime ? formatSchedule(match.scheduledTime) : null;
+
   if (isDiagonal) {
     return (
       <div
         style={{
-          width: 70,
-          height: 60,
+          width: 90,
+          height: 72,
           background: "var(--paper-2)",
           border: "1px solid var(--line-soft)",
           display: "flex",
@@ -400,8 +409,8 @@ function MatchCell({
   return (
     <div
       style={{
-        width: 70,
-        height: 60,
+        width: 90,
+        height: 72,
         border: "1px solid var(--line-soft)",
         background: match?.winnerId ? "var(--paper-1)" : "white",
         cursor: "pointer",
@@ -432,14 +441,32 @@ function MatchCell({
               <div key={idx}>{line}</div>
             ))}
           </div>
+        ) : schedule ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 2,
+              padding: "0 4px",
+            }}
+          >
+            <div style={{ fontSize: 10, color: "var(--ink-muted)", textAlign: "center", lineHeight: 1.2 }}>
+              {schedule.date}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--ink)", textAlign: "center" }}>
+              {schedule.time}
+            </div>
+          </div>
         ) : (
           isHovered && (
-            <svg 
-              width="16" 
-              height="16" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
               strokeWidth="2"
               style={{ opacity: 0.5 }}
             >
@@ -537,11 +564,11 @@ function GroupCard({
                   Participants
                 </th>
                 {orderedTeamIds.map((teamId, colIndex) => (
-                  <th key={teamId} style={{ 
-                    width: 70, 
-                    height: 60, 
-                    padding: "4px 1px", 
-                    border: "1px solid var(--line-soft)", 
+                  <th key={teamId} style={{
+                    width: 90,
+                    height: 60,
+                    padding: "4px 1px",
+                    border: "1px solid var(--line-soft)",
                     background: "var(--paper-2)",
                     writingMode: "vertical-rl",
                     textOrientation: "mixed",
@@ -699,6 +726,9 @@ export function GroupsHeader({
   isAdvancing,
   isCheckingCompletion,
   handleAdvanceToPlayoffs,
+  alreadyAdvanced,
+  tournamentSlug,
+  divisionId,
 }: {
   divisionName: string;
   teamsCount: number;
@@ -709,20 +739,25 @@ export function GroupsHeader({
   isAdvancing: boolean;
   isCheckingCompletion: boolean;
   handleAdvanceToPlayoffs: () => void;
+  alreadyAdvanced: boolean;
+  tournamentSlug: string;
+  divisionId: string;
 }) {
+  
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
       <div>
         <div className="wf-serif" style={{ fontSize: 22 }}>
-          {divisionName} · Group Stage
+          {divisionName} · {alreadyAdvanced ? "Playoff Stage" : "Group Stage"}
         </div>
         <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
           {teamsCount} team{teamsCount !== 1 ? "s" : ""} · {groupsCount} group{groupsCount !== 1 ? "s" : ""}
+          {alreadyAdvanced && " · Advanced to Playoffs"}
         </div>
       </div>
       {hasGroups && (
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {groupComplete === true && (
+          {groupComplete === true && !alreadyAdvanced && (
             <button
               onClick={handleAdvanceToPlayoffs}
               disabled={isAdvancing || isCheckingCompletion}
@@ -740,6 +775,26 @@ export function GroupsHeader({
             >
               {isAdvancing ? "Advancing..." : "Advance to Playoffs"}
             </button>
+          )}
+          {alreadyAdvanced && (
+            <a
+              href={`/admin/t/${tournamentSlug}/d/${divisionId}/bracket`}
+              style={{
+                padding: "6px 14px",
+                fontSize: 13,
+                fontFamily: "Poppins, sans-serif",
+                background: "var(--blue)",
+                border: "none",
+                borderRadius: 6,
+                cursor: "pointer",
+                color: "#fff",
+                fontWeight: 600,
+                textDecoration: "none",
+                display: "inline-block",
+              }}
+            >
+              View Playoff Bracket
+            </a>
           )}
           <button
             onClick={onRegenerateGroups}
@@ -766,28 +821,23 @@ export function GroupsHeader({
 export function GroupsPageClient({
   tournament,
   division,
-  teams,
-  groups,
-  matches,
   teamMap,
-  matchRows,
   groupRows,
   generateAction,
 }: {
   tournament: any;
   division: any;
-  teams: any[];
-  groups: any[];
-  matches: any[];
   teamMap: TeamMap;
-  matchRows: MatchRow[];
+  courtMap: Record<string, string>;
   groupRows: GroupRow[];
   generateAction: () => Promise<void>;
 }) {
-  const hasGroups = groups.length > 0;
+  const hasGroups = groupRows.length > 0;
+  const teamsCount = Object.keys(teamMap).length;
+  const groupsCount = groupRows.length;
   const divisionId = division._id.toString();
   const tournamentSlug = tournament.slug;
-  const { isCheckingCompletion, isAdvancing, groupComplete, handleAdvanceToPlayoffs, recheckCompletion } =
+  const { isCheckingCompletion, isAdvancing, groupComplete, alreadyAdvanced, handleAdvanceToPlayoffs, recheckCompletion } =
     useGroupStageStatus(divisionId, tournamentSlug);
 
   return (
@@ -807,14 +857,17 @@ export function GroupsPageClient({
           </Link>
           <GroupsHeader
             divisionName={division.name}
-            teamsCount={teams.length}
-            groupsCount={groups.length}
+            teamsCount={teamsCount}
+            groupsCount={groupsCount}
             hasGroups={hasGroups}
             onRegenerateGroups={generateAction}
             groupComplete={groupComplete}
             isAdvancing={isAdvancing}
             isCheckingCompletion={isCheckingCompletion}
             handleAdvanceToPlayoffs={handleAdvanceToPlayoffs}
+            alreadyAdvanced={alreadyAdvanced}
+            tournamentSlug={tournamentSlug}
+            divisionId={divisionId}
           />
         </div>
 
@@ -828,7 +881,7 @@ export function GroupsPageClient({
             justifyContent: "center",
             gap: 16,
           }}>
-            {teams.length < 4 ? (
+            {teamsCount < 4 ? (
               <div style={{ textAlign: "center" }}>
                 <div className="wf-serif" style={{ fontSize: 20, marginBottom: 8 }}>Not enough teams</div>
                 <div className="muted" style={{ fontSize: 14 }}>
@@ -839,7 +892,7 @@ export function GroupsPageClient({
               <>
                 <div className="wf-serif" style={{ fontSize: 20 }}>No groups yet</div>
                 <div className="muted" style={{ fontSize: 14 }}>
-                  {teams.length} teams ready for group stage.
+                  {teamsCount} teams ready for group stage.
                 </div>
                 <form action={generateAction}>
                   <button
@@ -883,22 +936,27 @@ export function useGroupStageStatus(divisionId: string, tournamentSlug: string) 
   const [isCheckingCompletion, setIsCheckingCompletion] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [groupComplete, setGroupComplete] = useState<boolean | null>(null);
+  const [alreadyAdvanced, setAlreadyAdvanced] = useState(false);
   const [error, setError] = useState("");
 
   async function checkCompletion() {
     setIsCheckingCompletion(true);
     try {
       const result = await isGroupStageComplete(divisionId);
+      
       if (result.error) {
         setError(result.error);
         setGroupComplete(null);
+        setAlreadyAdvanced(false);
       } else {
         setGroupComplete(result.complete ?? false);
+        setAlreadyAdvanced(result.alreadyAdvanced ?? false);
         setError("");
       }
-    } catch {
+    } catch (err) {
       setError("Failed to check group stage completion");
       setGroupComplete(null);
+      setAlreadyAdvanced(false);
     } finally {
       setIsCheckingCompletion(false);
     }
@@ -931,6 +989,7 @@ export function useGroupStageStatus(divisionId: string, tournamentSlug: string) 
     isCheckingCompletion,
     isAdvancing,
     groupComplete,
+    alreadyAdvanced,
     error,
     handleAdvanceToPlayoffs,
     recheckCompletion: checkCompletion,

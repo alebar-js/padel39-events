@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import mongoose from "mongoose";
 import { connectDB } from "@/app/lib/db";
 import { Tournament } from "@/app/lib/models/Tournament";
@@ -7,7 +6,9 @@ import { Division } from "@/app/lib/models/Division";
 import { Team } from "@/app/lib/models/Team";
 import { Group } from "@/app/lib/models/Group";
 import { Match } from "@/app/lib/models/Match";
+import { Court } from "@/app/lib/models/Court";
 import { forceGenerateGroups } from "@/app/lib/actions/forceGenerateGroups";
+import { serialize } from "@/app/lib/serialize";
 import { GroupsPageClient } from "./client";
 
 type Params = Promise<{ slug: string; divisionId: string }>;
@@ -22,9 +23,11 @@ export type MatchRow = {
   winnerId: string | null;
   sets: SetScore[];
   scheduledTime: string | null;
+  courtId: string | null;
 };
 
 export type TeamMap = Record<string, string>; // id -> "Player1 / Player2"
+export type CourtMap = Record<string, string>; // id -> name
 
 export type GroupRow = {
   id: string;
@@ -42,12 +45,13 @@ export default async function GroupsPage({ params }: { params: Params }) {
   await connectDB();
   const divOid = new mongoose.Types.ObjectId(divisionId);
 
-  const [tournament, division, teams, groups, matches] = await Promise.all([
+  const [tournament, division, teams, groups, matches, courts] = await Promise.all([
     Tournament.findOne({ slug }).lean(),
     Division.findById(divOid).lean(),
     Team.find({ divisionId: divOid }).sort({ seed: 1 }).lean(),
     Group.find({ divisionId: divOid }).sort({ order: 1 }).lean(),
     Match.find({ divisionId: divOid, isGroupStage: true }).lean(),
+    Court.find({}).lean(),
   ]);
 
   if (!tournament || !division) notFound();
@@ -61,6 +65,11 @@ export default async function GroupsPage({ params }: { params: Params }) {
     teamMap[t._id.toString()] = `${t.player1} / ${t.player2}`;
   }
 
+  const courtMap: CourtMap = {};
+  for (const c of courts) {
+    courtMap[c._id.toString()] = c.name;
+  }
+
   const matchRows: MatchRow[] = matches.map((m) => ({
     id: m._id.toString(),
     groupId: m.groupId?.toString() ?? "",
@@ -69,6 +78,7 @@ export default async function GroupsPage({ params }: { params: Params }) {
     winnerId: m.winnerId?.toString() ?? null,
     sets: (m.sets ?? []).map((s) => ({ team1: s.team1, team2: s.team2 })),
     scheduledTime: m.scheduledTime?.toISOString() ?? null,
+    courtId: m.courtId?.toString() ?? null,
   }));
 
   const groupRows: GroupRow[] = groups.map((g) => ({
@@ -81,16 +91,6 @@ export default async function GroupsPage({ params }: { params: Params }) {
     matches: matchRows.filter((m) => m.groupId === g._id.toString()),
   }));
 
-  // Ensure all data is serializable plain objects
-  const serializableTeamMap = JSON.parse(JSON.stringify(teamMap));
-  const serializableGroupRows = JSON.parse(JSON.stringify(groupRows));
-  const serializableTournament = JSON.parse(JSON.stringify(tournament));
-  const serializableDivision = JSON.parse(JSON.stringify(division));
-  const serializableTeams = JSON.parse(JSON.stringify(teams));
-  const serializableGroups = JSON.parse(JSON.stringify(groups));
-  const serializableMatches = JSON.parse(JSON.stringify(matches));
-  const serializableMatchRows = JSON.parse(JSON.stringify(matchRows));
-
   async function generate() {
     "use server";
     await forceGenerateGroups(divisionId, slug);
@@ -98,14 +98,11 @@ export default async function GroupsPage({ params }: { params: Params }) {
 
   return (
     <GroupsPageClient
-      tournament={serializableTournament}
-      division={serializableDivision}
-      teams={serializableTeams}
-      groups={serializableGroups}
-      matches={serializableMatches}
-      teamMap={serializableTeamMap}
-      matchRows={serializableMatchRows}
-      groupRows={serializableGroupRows}
+      tournament={serialize(tournament)}
+      division={serialize(division)}
+      teamMap={serialize(teamMap)}
+      courtMap={serialize(courtMap)}
+      groupRows={serialize(groupRows)}
       generateAction={generate}
     />
   );
