@@ -9,16 +9,16 @@ interface HeaderWithButtonProps {
   courts: CourtRow[];
   days: DayRow[];
   matches: MatchRow[];
-  onEditCourts: () => void;
+  onConfigure: () => void;
 }
 
-export default function HeaderWithButton({ 
-  tournamentName, 
-  tournamentSlug, 
-  courts, 
-  days, 
-  matches, 
-  onEditCourts 
+export default function HeaderWithButton({
+  tournamentName,
+  tournamentSlug,
+  courts,
+  days,
+  matches,
+  onConfigure
 }: HeaderWithButtonProps) {
   return (
     <div style={{ padding: "16px 24px 12px", borderBottom: "1px solid var(--paper-2)", flexShrink: 0 }}>
@@ -40,6 +40,22 @@ export default function HeaderWithButton({
             {matches.filter((m) => m.scheduledTime).length}/{matches.length} scheduled
           </div>
         </div>
+        <button
+          onClick={onConfigure}
+          style={{
+            padding: "8px 16px",
+            fontSize: 13,
+            fontFamily: "Poppins, sans-serif",
+            background: "var(--green)",
+            border: "none",
+            borderRadius: 6,
+            cursor: "pointer",
+            color: "#fff",
+            fontWeight: 500,
+          }}
+        >
+          Configure Scheduler
+        </button>
       </div>
     </div>
   );

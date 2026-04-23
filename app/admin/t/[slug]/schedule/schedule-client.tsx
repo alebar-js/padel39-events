@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { ScheduleGrid } from "./client";
-import CourtModal from "./court-modal";
+import ConfigureSchedulerModal from "./configure-scheduler-modal";
 import HeaderWithButton from "./header-with-button";
-import DayScheduleModal from "./day-schedule-modal";
 import type { CourtRow, DayRow, MatchRow, DivisionRow } from "./page";
 
 interface ScheduleClientProps {
@@ -17,49 +16,41 @@ interface ScheduleClientProps {
   tournamentId: string;
 }
 
-export default function ScheduleClient({ 
+export default function ScheduleClient({
   tournamentName,
-  tournamentSlug, 
-  courts, 
-  days, 
-  matches, 
-  divisions, 
-  tournamentId 
+  tournamentSlug,
+  courts,
+  days,
+  matches,
+  divisions,
+  tournamentId
 }: ScheduleClientProps) {
-  const [showCourtModal, setShowCourtModal] = useState(false);
-  const [showDayScheduleModal, setShowDayScheduleModal] = useState(false);
+  const [showConfigModal, setShowConfigModal] = useState(false);
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <HeaderWithButton 
+      <HeaderWithButton
         tournamentName={tournamentName}
         tournamentSlug={tournamentSlug}
         courts={courts}
         days={days}
         matches={matches}
-        onEditCourts={() => setShowCourtModal(true)}
+        onConfigure={() => setShowConfigModal(true)}
       />
-      
+
       <ScheduleGrid
         courts={courts}
         days={days}
         matches={matches}
         divisions={divisions}
         tournamentSlug={tournamentSlug}
-        onEditCourts={() => setShowCourtModal(true)}
-        onEditDaySchedules={() => setShowDayScheduleModal(true)}
+        onConfigure={() => setShowConfigModal(true)}
       />
-      
-      <CourtModal 
-        isOpen={showCourtModal}
-        onClose={() => setShowCourtModal(false)}
-        courts={courts} 
-        tournamentSlug={tournamentSlug} 
-        tournamentId={tournamentId} 
-      />
-      <DayScheduleModal
-        isOpen={showDayScheduleModal}
-        onClose={() => setShowDayScheduleModal(false)}
+
+      <ConfigureSchedulerModal
+        isOpen={showConfigModal}
+        onClose={() => setShowConfigModal(false)}
+        courts={courts}
         days={days}
         tournamentSlug={tournamentSlug}
         tournamentId={tournamentId}

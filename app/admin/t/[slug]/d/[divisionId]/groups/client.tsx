@@ -1,8 +1,10 @@
 "use client";
 
 import { Fragment, useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { recordScore } from "@/app/lib/actions/recordScore";
 import { advanceToPlayoffs, isGroupStageComplete } from "@/app/lib/actions/advanceToPlayoffs";
+import { SidebarNav } from "@/app/components/chrome";
 import type { GroupRow, MatchRow, TeamMap, MatchFormat, SetScore } from "./page";
 
 // Input styles for the drawer
@@ -458,12 +460,14 @@ function GroupCard({
   matchFormat,
   divisionId,
   tournamentSlug,
+  onScoreSaved,
 }: {
   group: GroupRow;
   teamMap: TeamMap;
   matchFormat: MatchFormat;
   divisionId: string;
   tournamentSlug: string;
+  onScoreSaved: () => void;
 }) {
   const [selectedMatch, setSelectedMatch] = useState<MatchRow | null>(null);
   const standings = calculateGroupStandings(group.teams, group.matches, teamMap, matchFormat);
@@ -485,7 +489,8 @@ function GroupCard({
       border: "1px solid var(--line-soft)",
       borderRadius: 12,
       padding: 16,
-      marginBottom: 24,
+      width: "fit-content",
+      minWidth: "auto",
     }}>
       <div style={{
         fontSize: 18,
@@ -676,66 +681,231 @@ function GroupCard({
           matchFormat={matchFormat}
           divisionId={divisionId}
           tournamentSlug={tournamentSlug}
-          onClose={() => setSelectedMatch(null)}
+          onClose={() => { setSelectedMatch(null); onScoreSaved(); }}
         />
       )}
     </div>
   );
 }
 
-// Main component
-export function GroupsView({
-  groups,
-  teamMap,
-  divisionId,
-  tournamentSlug,
-  matchFormat,
-  groupSize,
+// Header component with advance button
+export function GroupsHeader({
+  divisionName,
+  teamsCount,
+  groupsCount,
+  hasGroups,
+  onRegenerateGroups,
+  groupComplete,
+  isAdvancing,
+  isCheckingCompletion,
+  handleAdvanceToPlayoffs,
 }: {
-  groups: GroupRow[];
-  teamMap: TeamMap;
-  divisionId: string;
-  tournamentSlug: string;
-  matchFormat: MatchFormat;
-  groupSize: number;
+  divisionName: string;
+  teamsCount: number;
+  groupsCount: number;
+  hasGroups: boolean;
+  onRegenerateGroups: () => void;
+  groupComplete: boolean | null;
+  isAdvancing: boolean;
+  isCheckingCompletion: boolean;
+  handleAdvanceToPlayoffs: () => void;
 }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
+      <div>
+        <div className="wf-serif" style={{ fontSize: 22 }}>
+          {divisionName} · Group Stage
+        </div>
+        <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
+          {teamsCount} team{teamsCount !== 1 ? "s" : ""} · {groupsCount} group{groupsCount !== 1 ? "s" : ""}
+        </div>
+      </div>
+      {hasGroups && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {groupComplete === true && (
+            <button
+              onClick={handleAdvanceToPlayoffs}
+              disabled={isAdvancing || isCheckingCompletion}
+              style={{
+                padding: "6px 14px",
+                fontSize: 13,
+                fontFamily: "Poppins, sans-serif",
+                background: isAdvancing ? "var(--line-soft)" : "var(--green)",
+                border: "none",
+                borderRadius: 6,
+                cursor: isAdvancing || isCheckingCompletion ? "not-allowed" : "pointer",
+                color: "#fff",
+                fontWeight: 600,
+              }}
+            >
+              {isAdvancing ? "Advancing..." : "Advance to Playoffs"}
+            </button>
+          )}
+          <button
+            onClick={onRegenerateGroups}
+            style={{
+              padding: "6px 14px",
+              fontSize: 13,
+              fontFamily: "Poppins, sans-serif",
+              background: "none",
+              border: "1px solid var(--line-soft)",
+              borderRadius: 6,
+              cursor: "pointer",
+              color: "var(--ink-muted)",
+            }}
+          >
+            Regenerate Groups
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Client wrapper component
+export function GroupsPageClient({
+  tournament,
+  division,
+  teams,
+  groups,
+  matches,
+  teamMap,
+  matchRows,
+  groupRows,
+  generateAction,
+}: {
+  tournament: any;
+  division: any;
+  teams: any[];
+  groups: any[];
+  matches: any[];
+  teamMap: TeamMap;
+  matchRows: MatchRow[];
+  groupRows: GroupRow[];
+  generateAction: () => Promise<void>;
+}) {
+  const hasGroups = groups.length > 0;
+  const divisionId = division._id.toString();
+  const tournamentSlug = tournament.slug;
+  const { isCheckingCompletion, isAdvancing, groupComplete, handleAdvanceToPlayoffs, recheckCompletion } =
+    useGroupStageStatus(divisionId, tournamentSlug);
+
+  return (
+    <div className="wf screen" style={{ flexDirection: "row" }}>
+      <SidebarNav />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+        {/* Header */}
+        <div style={{ padding: "16px 24px 12px", borderBottom: "1px solid var(--paper-2)" }}>
+          <Link
+            href={`/admin/t/${tournamentSlug}`}
+            className="muted"
+            style={{ fontSize: 14, textDecoration: "none" }}
+          >
+            {/* eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing */}
+            {tournament.name}
+          </Link>
+          <GroupsHeader
+            divisionName={division.name}
+            teamsCount={teams.length}
+            groupsCount={groups.length}
+            hasGroups={hasGroups}
+            onRegenerateGroups={generateAction}
+            groupComplete={groupComplete}
+            isAdvancing={isAdvancing}
+            isCheckingCompletion={isCheckingCompletion}
+            handleAdvanceToPlayoffs={handleAdvanceToPlayoffs}
+          />
+        </div>
+
+        {/* Body */}
+        {!hasGroups ? (
+          <div style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 16,
+          }}>
+            {teams.length < 4 ? (
+              <div style={{ textAlign: "center" }}>
+                <div className="wf-serif" style={{ fontSize: 20, marginBottom: 8 }}>Not enough teams</div>
+                <div className="muted" style={{ fontSize: 14 }}>
+                  Add at least 4 teams before generating groups.
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="wf-serif" style={{ fontSize: 20 }}>No groups yet</div>
+                <div className="muted" style={{ fontSize: 14 }}>
+                  {teams.length} teams ready for group stage.
+                </div>
+                <form action={generateAction}>
+                  <button
+                    type="submit"
+                    style={{
+                      padding: "10px 24px",
+                      fontSize: 15,
+                      fontFamily: "Poppins, sans-serif",
+                      background: "var(--green)",
+                      border: "none",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      color: "#fff",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Generate Groups
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        ) : (
+          <GroupsView
+            groups={groupRows}
+            teamMap={teamMap}
+            divisionId={divisionId}
+            tournamentSlug={tournamentSlug}
+            matchFormat={(division.matchFormat ?? "BEST_OF_3") as MatchFormat}
+            groupSize={division.groupPlayoffConfig?.groupSize ?? 4}
+            onScoreSaved={recheckCompletion}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Hook for checking group stage completion and advancing
+export function useGroupStageStatus(divisionId: string, tournamentSlug: string) {
   const [isCheckingCompletion, setIsCheckingCompletion] = useState(false);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [groupComplete, setGroupComplete] = useState<boolean | null>(null);
   const [error, setError] = useState("");
 
-  // Check if group stage is complete
-  useEffect(() => {
-    let cancelled = false;
-    
-    async function checkCompletion() {
-      setIsCheckingCompletion(true);
-      try {
-        const result = await isGroupStageComplete(divisionId);
-        if (!cancelled) {
-          if (result.error) {
-            setError(result.error);
-            setGroupComplete(null);
-          } else {
-            setGroupComplete(result.complete ?? false);
-            setError("");
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError("Failed to check group stage completion");
-          setGroupComplete(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsCheckingCompletion(false);
-        }
+  async function checkCompletion() {
+    setIsCheckingCompletion(true);
+    try {
+      const result = await isGroupStageComplete(divisionId);
+      if (result.error) {
+        setError(result.error);
+        setGroupComplete(null);
+      } else {
+        setGroupComplete(result.complete ?? false);
+        setError("");
       }
+    } catch {
+      setError("Failed to check group stage completion");
+      setGroupComplete(null);
+    } finally {
+      setIsCheckingCompletion(false);
     }
-    
+  }
+
+  useEffect(() => {
     checkCompletion();
-    
-    return () => { cancelled = true; };
   }, [divisionId]);
 
   async function handleAdvanceToPlayoffs() {
@@ -757,78 +927,54 @@ export function GroupsView({
     }
   }
 
+  return {
+    isCheckingCompletion,
+    isAdvancing,
+    groupComplete,
+    error,
+    handleAdvanceToPlayoffs,
+    recheckCompletion: checkCompletion,
+  };
+}
+
+// Main component
+export function GroupsView({
+  groups,
+  teamMap,
+  divisionId,
+  tournamentSlug,
+  matchFormat,
+  groupSize,
+  onScoreSaved,
+}: {
+  groups: GroupRow[];
+  teamMap: TeamMap;
+  divisionId: string;
+  tournamentSlug: string;
+  matchFormat: MatchFormat;
+  groupSize: number;
+  onScoreSaved: () => void;
+}) {
   return (
     <div style={{ padding: "16px 24px 24px" }}>
       <div style={{ fontSize: 14, color: "var(--ink-muted)", marginBottom: 20 }}>
         Groups of {groupSize} teams. Top teams advance to playoffs.
       </div>
-      
-      {/* Completion Status and Advance Button */}
-      <div style={{
-        padding: "16px",
-        border: "1px solid var(--line-soft)",
-        borderRadius: 8,
-        background: "var(--paper-1)",
-        marginBottom: 24,
-      }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-          Group Stage Status
-        </div>
-        
-        {isCheckingCompletion ? (
-          <div style={{ fontSize: 13, color: "var(--ink-muted)" }}>
-            Checking completion status...
-          </div>
-        ) : groupComplete === true ? (
-          <div>
-            <div style={{ fontSize: 13, color: "var(--green)", marginBottom: 12 }}>
-              <span style={{ fontWeight: 600 }}>Group stage complete!</span> All matches have been played.
-            </div>
-            <button
-              onClick={handleAdvanceToPlayoffs}
-              disabled={isAdvancing}
-              style={{
-                padding: "10px 20px",
-                fontSize: 13,
-                fontFamily: "Poppins, sans-serif",
-                background: isAdvancing ? "var(--line-soft)" : "var(--green)",
-                border: "none",
-                borderRadius: 6,
-                cursor: isAdvancing ? "not-allowed" : "pointer",
-                color: "#fff",
-                fontWeight: 600,
-              }}
-            >
-              {isAdvancing ? "Advancing..." : "Advance to Playoffs"}
-            </button>
-          </div>
-        ) : groupComplete === false ? (
-          <div style={{ fontSize: 13, color: "var(--ink-muted)" }}>
-            <span style={{ fontWeight: 600 }}>Group stage in progress.</span> Complete all matches before advancing to playoffs.
-          </div>
-        ) : (
-          <div style={{ fontSize: 13, color: "var(--ink-muted)" }}>
-            Unable to determine group stage status.
-          </div>
-        )}
-        
-        {error && (
-          <div style={{ fontSize: 12, color: "#c0392b", marginTop: 8 }}>
-            {error}
-          </div>
-        )}
+
+      {/* Centered group cards container */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
+        {groups.map((group) => (
+          <GroupCard
+            key={group.id}
+            group={group}
+            teamMap={teamMap}
+            matchFormat={matchFormat}
+            divisionId={divisionId}
+            tournamentSlug={tournamentSlug}
+            onScoreSaved={onScoreSaved}
+          />
+        ))}
       </div>
-      
-      {groups.map((group) => (
-        <GroupCard
-          key={group.id}
-          group={group}
-          teamMap={teamMap}
-          matchFormat={matchFormat}
-          divisionId={divisionId}
-          tournamentSlug={tournamentSlug}
-        />
-      ))}
     </div>
   );
 }

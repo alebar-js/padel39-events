@@ -8,6 +8,7 @@ import { Team } from "@/app/lib/models/Team";
 import { Match } from "@/app/lib/models/Match";
 import { SidebarNav } from "@/app/components/chrome";
 import { generateBracket } from "@/app/lib/actions/generateBracket";
+import { generatePlayoffBracket } from "@/app/lib/actions/advanceToPlayoffs";
 import { BracketView } from "./client";
 
 type Params = Promise<{ slug: string; divisionId: string }>;
@@ -70,12 +71,20 @@ export default async function BracketPage({ params }: { params: Params }) {
   const serializableMainRows = JSON.parse(JSON.stringify(mainRows));
   const serializableBackRows = JSON.parse(JSON.stringify(backRows));
   const serializableTeamMap = JSON.parse(JSON.stringify(teamMap));
+  const serializableTournament = JSON.parse(JSON.stringify(tournament));
+  const serializableDivision = JSON.parse(JSON.stringify(division));
+  const serializableTeams = JSON.parse(JSON.stringify(teams));
 
   const hasBracket = mainRows.length > 0;
 
   async function generate() {
     "use server";
-    await generateBracket(divisionId, slug);
+    if (serializableDivision.format === "GROUP_PLAYOFF") {
+      const result = await generatePlayoffBracket(divisionId, slug);
+      if (result.error) console.error("[generatePlayoffBracket]", result.error);
+    } else {
+      await generateBracket(divisionId, slug);
+    }
   }
 
   return (
@@ -90,15 +99,15 @@ export default async function BracketPage({ params }: { params: Params }) {
             className="muted"
             style={{ fontSize: 14, textDecoration: "none" }}
           >
-            ← {tournament.name}
+            ← {serializableTournament.name}
           </Link>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
             <div>
               <div className="wf-serif" style={{ fontSize: 22 }}>
-                {division.name} · Bracket
+                {serializableDivision.name} · Bracket
               </div>
               <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>
-                {teams.length} team{teams.length !== 1 ? "s" : ""}
+                {serializableTeams.length} team{serializableTeams.length !== 1 ? "s" : ""}
               </div>
             </div>
             {hasBracket && (
@@ -174,7 +183,7 @@ export default async function BracketPage({ params }: { params: Params }) {
             teamMap={serializableTeamMap}
             divisionId={divisionId}
             tournamentSlug={slug}
-            matchFormat={(division.matchFormat ?? "BEST_OF_3") as MatchFormat}
+            matchFormat={(serializableDivision.matchFormat ?? "BEST_OF_3") as MatchFormat}
           />
         )}
       </div>

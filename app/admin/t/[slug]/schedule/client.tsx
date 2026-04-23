@@ -84,30 +84,45 @@ function MatchChip({
         inset: 2,
         background: "var(--green)",
         borderRadius: 5,
-        padding: "3px 6px",
         cursor: "pointer",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "center",
         overflow: "hidden",
       }}
     >
-      <div
-        style={{
-          fontSize: 11,
-          fontWeight: 600,
-          color: "var(--paper)",
-          lineHeight: 1.3,
-          whiteSpace: "pre-line",
-          overflow: "hidden",
-          display: "-webkit-box",
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: "vertical",
-          textAlign: "center",
-        }}
-      >
-        {matchLabel(match)}
-      </div>
+      {[match.team1, match.team2].map((team, idx) => {
+        const players = (team ?? "TBD").split(" / ");
+        return (
+          <div
+            key={idx}
+            style={{
+              padding: idx === 0 ? "5px 7px 4px" : "4px 7px 14px",
+              borderBottom: idx === 0 ? "1px solid rgba(250,247,242,0.2)" : undefined,
+              display: "flex",
+              flexDirection: "column",
+              gap: 1,
+              flex: 1,
+            }}
+          >
+            {players.map((p, pi) => (
+              <span
+                key={pi}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: "var(--paper)",
+                  lineHeight: 1.3,
+                  overflow: "hidden",
+                  whiteSpace: "nowrap",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {p}
+              </span>
+            ))}
+          </div>
+        );
+      })}
       <div
         style={{
           position: "absolute",
@@ -140,16 +155,12 @@ function ScheduleGridDay({
   matches,
   onCellClick,
   onMatchClick,
-  onEditCourts,
-  onEditDaySchedules,
 }: {
   day: DayRow;
   courts: CourtRow[];
   matches: MatchRow[];
   onCellClick: (courtId: string, slot: string, day: DayRow) => void;
   onMatchClick: (m: MatchRow) => void;
-  onEditCourts: () => void;
-  onEditDaySchedules: () => void;
 }) {
   const activeCourts = courtsForDay(day, courts);
   const slots = slotsForDay(day);
@@ -191,24 +202,6 @@ function ScheduleGridDay({
             alignItems: "center",
             justifyContent: "center"
           }}>
-            <button
-              onClick={onEditCourts}
-              style={{
-                padding: "6px 10px",
-                fontSize: 11,
-                fontFamily: "Poppins, sans-serif",
-                background: "var(--paper-2)",
-                border: "1px solid var(--paper-3)",
-                borderRadius: 4,
-                cursor: "pointer",
-                color: "var(--ink-muted)",
-                fontWeight: 500,
-                whiteSpace: "nowrap",
-              }}
-              title="Edit Courts"
-            >
-              Edit
-            </button>
           </div>
           {activeCourts.map((c) => (
             <div
@@ -789,16 +782,14 @@ export function ScheduleGrid({
   matches,
   divisions,
   tournamentSlug,
-  onEditCourts,
-  onEditDaySchedules,
+  onConfigure,
 }: {
   courts: CourtRow[];
   days: DayRow[];
   matches: MatchRow[];
   divisions: DivisionRow[];
   tournamentSlug: string;
-  onEditCourts: () => void;
-  onEditDaySchedules: () => void;
+  onConfigure: () => void;
 }) {
   const [activeDayId, setActiveDayId] = useState<string>(days[0]?.id ?? "");
   const [drawer, setDrawer] = useState<DrawerState>({ kind: "closed" });
@@ -858,22 +849,6 @@ export function ScheduleGrid({
             );
           })}
         </div>
-        <button
-          onClick={onEditDaySchedules}
-          style={{
-            padding: "8px 16px",
-            fontSize: 13,
-            fontFamily: "Poppins, sans-serif",
-            background: "var(--green)",
-            border: "none",
-            borderRadius: 6,
-            cursor: "pointer",
-            color: "#fff",
-            fontWeight: 500,
-          }}
-        >
-          Edit Day Schedules
-        </button>
       </div>
 
       {/* Grid for active day */}
@@ -884,8 +859,6 @@ export function ScheduleGrid({
           matches={matches}
           onCellClick={handleCellClick}
           onMatchClick={handleMatchClick}
-          onEditCourts={onEditCourts}
-          onEditDaySchedules={onEditDaySchedules}
         />
       )}
 

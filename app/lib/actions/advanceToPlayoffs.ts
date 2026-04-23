@@ -138,7 +138,7 @@ export async function isGroupStageComplete(divisionId: string): Promise<{ error?
   const incompleteMatches = matches.filter(m => !m.winnerId);
 
   return {
-    complete: incompleteMatches.length === 0,
+    complete: matches.length > 0 && incompleteMatches.length === 0,
     incompleteMatches: incompleteMatches.map(m => ({
       id: m._id,
       groupId: m.groupId,
@@ -169,6 +169,7 @@ export async function generatePlayoffBracket(divisionId: string, tournamentSlug:
 
   const playoffSize = division.groupPlayoffConfig?.playoffSize ?? 4;
   const qualifyingMode = division.groupPlayoffConfig?.qualifyingMode ?? "AUTO";
+
 
   // Collect qualified teams
   const qualifiedTeams: any[] = [];
@@ -211,11 +212,11 @@ export async function generatePlayoffBracket(divisionId: string, tournamentSlug:
     return { error: `Expected ${playoffSize} qualified teams, got ${qualifiedTeams.length}` };
   }
 
-  // Clear existing playoff matches
+  // Clear existing playoff bracket matches (covers both phase-tagged and legacy matches)
   await Match.deleteMany({
     divisionId: divOid,
     isGroupStage: false,
-    phase: "PLAYOFF",
+    bracketSlot: { $exists: true, $ne: null },
   });
 
   // Generate bracket using existing generateBracket logic but with qualified teams only
@@ -359,8 +360,8 @@ export async function advanceToPlayoffs(divisionId: string, tournamentSlug: stri
   const { complete, incompleteMatches, error } = await isGroupStageComplete(divisionId);
   if (error) return { error };
   if (!complete) {
-    return { 
-      error: `Group stage is not complete. ${incompleteMatches?.length ?? 0} matches remaining.` 
+    return {
+      error: `Group stage is not complete. ${incompleteMatches?.length ?? 0} matches remaining.`
     };
   }
 
@@ -368,6 +369,10 @@ export async function advanceToPlayoffs(divisionId: string, tournamentSlug: stri
   await Division.findByIdAndUpdate(divOid, {
     groupPlayoffState: "PLAYOFF_STAGE",
   });
+
+  // Generate the playoff bracket immediately with only the qualifying teams
+  const bracketResult = await generatePlayoffBracket(divisionId, tournamentSlug);
+  if (bracketResult.error) return bracketResult;
 
   revalidatePath(`/admin/t/${tournamentSlug}`);
   return {};

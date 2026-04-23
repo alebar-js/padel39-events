@@ -28,15 +28,6 @@ function TournamentCard({ t }: { t: TournamentRow }) {
             <div><span style={{ color: "var(--green)", fontWeight: 700 }}>{t.teamCount}</span> teams</div>
           </div>
           <div style={{ flex: 1 }} />
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            marginTop: 6, paddingTop: 8, borderTop: "1px dashed var(--line-soft)",
-          }}>
-            <span style={{ fontFamily: "Poppins, sans-serif", fontSize: 10, color: "var(--ink-muted)" }}>
-              /t/{t.slug}
-            </span>
-            <span className="wf-arrow" />
-          </div>
         </div>
       </SketchBox>
     </Link>
